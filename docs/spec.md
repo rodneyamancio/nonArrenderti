@@ -22,8 +22,8 @@ group has a fund ledger (receivables, money received, money spent).
 Tenace **only tracks money; it never moves it**. Payments happen outside (PIX); the
 member declares them and a group admin confirms.
 
-Multi-user: a person can be in many groups. UI language: **pt-BR**. Web first,
-responsive down to 375 px, with the API and shared packages ready for an Expo app.
+Multi-user: a person can be in many groups. UI language: **pt-BR**. Responsive web portal
+(down to 375 px) and an Expo app (iOS/Android) on the same API, with the same screens.
 
 ## 2. Glossary
 
@@ -75,8 +75,11 @@ Deviations:
 6. **Photos on a local volume** (`StorageService`, `UPLOAD_DIR`), resized in the browser
    (≤1600 px JPEG) and served only to group members. S3/MinIO can replace it behind the
    same service.
-7. **UI kit inside `apps/web/components/ui`** for v1 (no `packages/ui` yet) and no
-   `packages/api-client` yet: both are extracted when the Expo app starts (phase 10b).
+7. **One UI kit per face, no `packages/ui`:** the portal keeps `apps/web/components/ui`
+   (Tailwind) and the app `apps/mobile/src/ui` (React Native). They share the role tokens by
+   value; `apps/mobile/test/parity.test.mjs` reads the portal's CSS and code and fails when
+   colors, labels, formats or goal rules drift. The transport and error messages **are**
+   shared: `packages/api-client`.
 
 ## 4. Monorepo structure
 
@@ -88,11 +91,12 @@ apps/
                            feed, contests, uploads, ledgers, payments, notifications
     test/                  integration tests (real Postgres + Redis)
   web/            Next.js — responsive portal (PWA manifest), /api proxied to the API
-  mobile/         Expo — later (phase 10b); reuses types and rules
+  mobile/         Expo SDK 58 + expo-router — iOS/Android app on the same /api (Bearer)
 packages/
   config/         tsconfig preset
   types/          DTOs, error codes, group roles → permissions (zero deps)
   rules/          pure domain math: dates/weeks in a time zone, slots, commitment, PIX BR Code
+  api-client/     shared transport: request envelope, ApiError/NetworkError, pt-BR messages
 infra/            Dockerfiles, production compose, nginx, deploy scripts
 ```
 
@@ -113,8 +117,11 @@ infra/            Dockerfiles, production compose, nginx, deploy scripts
 (ends every session via `authVersion`), single-use password reset (1 h). Sessions: 30 days
 absolute, 14 days idle. Web: `__Host-` httpOnly cookie + CSRF header `x-requested-with:
 tenace` + Origin check. Mobile: `POST /auth/login {client:"mobile"}` returns the token in
-the body and it is sent as `Authorization: Bearer` (no CSRF needed). MFA and e-mail
-verification: out of v1. Google login: open question (§17).
+the body and it is sent as `Authorization: Bearer` (no CSRF needed). The app calls the
+same origin as the portal (`https://tenace.amancio.family/api`): the web proxy forwards
+`Authorization`. On the phone the token lives only in SecureStore; only a 401 signs out
+(no network keeps the session); a password change ends the session there too. MFA and
+e-mail verification: out of v1. Google login: open question (§17).
 
 **System roles:** `user` (everyone), `platform_admin` (support staff).
 
@@ -283,8 +290,8 @@ Entries are immutable; mistakes are fixed with new entries. Every entry records
 
 v0.1: in-app notification center for invites, join requests, payments to confirm/confirmed,
 contests, adjustments and the Monday **week result**. E-mail (when `SMTP_URL` is set) for
-invites and password reset. Not built yet: e-mail week summary, per-type opt-out. Push
-notifications come with the mobile app (phase 10b).
+invites and password reset. Not built yet: e-mail week summary, per-type opt-out, push
+notifications (need the Expo/EAS project — §8.9).
 
 ### 8.8 Screens (web, mobile-first)
 
@@ -302,8 +309,22 @@ notifications come with the mobile app (phase 10b).
 | Pagar | Amount, PIX QR + copy, "Já paguei" |
 | Perfil | Name, photo, streaks, notification preferences, sessions |
 
-Bottom navigation on mobile (Início · Grupos · Registrar · Notificações · Perfil),
+Bottom navigation on mobile (Início · Avisos · Registrar · Grupos · Perfil),
 sidebar on desktop (`vg-navegacao`, simplified: no ⌘K in v1).
+
+### 8.9 Mobile app (`apps/mobile`, `vg-mobile`)
+
+Same screens and labels as the portal on phones: Início, Avisos, Grupos, Perfil, the
+**Registrar** sheet (photo from camera or the system photo picker — no full-library
+permission), the group (Semana · Feed · Metas · Conta · Membros · Ajustes), Pagar (PIX QR
+drawn locally + copy), Novo grupo (4 steps) and Convite. Theme Claro/Escuro/Sistema.
+Platform administration is not in the app: Perfil → "Administração da plataforma" opens
+the portal. Notification links (`/g/:id/conta?tab=…`) open the matching screen. Shared
+invite links are `https://tenace.amancio.family/convite/<token>` (paste in Início or open
+`tenace://convite/<token>`).
+
+Not built yet (need the company Expo account, `eas init`): store builds (TestFlight /
+Play internal track), OTA updates, push notifications, universal links, Face ID lock.
 
 ## 9. External integrations
 
@@ -395,7 +416,7 @@ the server `.env` by `infra/scripts/setup-server-env.sh` (`vg-segredos`).
 | 1 | Name | **Tenace**, tagline *non arrenderti* |
 | 2 | Money | Tracking only; payments outside the app (PIX), declared and confirmed by admin |
 | 3 | Check-in validation | Trust + optional photo; members can contest, admins resolve |
-| 4 | Delivery | Responsive web first; API, `types`, `api-client`, `rules` ready for Expo |
+| 4 | Delivery | Responsive web + Expo app on the same API; shared `types`, `rules`, `api-client` |
 | 5 | Tenancy | Not multi-tenant; isolation by group membership guard |
 | 6 | Backend | NestJS |
 | 7 | Week | Monday–Sunday in group time zone; close after grace (default 12 h) |
@@ -416,3 +437,5 @@ the server `.env` by `infra/scripts/setup-server-env.sh` (`vg-segredos`).
 3. Pause/vacation (member skips a week, approved by admin) — v1 or later?
 4. Can a member have **personal goals** inside a group (different targets per person),
    or are goals always shared? v1 assumption: shared goals, with per-goal participants.
+5. Publishing the app: which Expo account (company), Apple developer team and Play
+   console; then push notifications (week reminders, payment confirmed) and OTA.

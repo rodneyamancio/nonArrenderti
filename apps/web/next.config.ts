@@ -23,7 +23,7 @@ const config: NextConfig = {
   outputFileTracingRoot: path.join(__dirname, '../../'),
   poweredByHeader: false,
   reactStrictMode: true,
-  transpilePackages: ['@tenace/rules', '@tenace/types'],
+  transpilePackages: ['@tenace/api-client', '@tenace/rules', '@tenace/types'],
   async headers() {
     return [
       {

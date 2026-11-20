@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@tenace/api-client": "workspace:*",
     "@tenace/rules": "workspace:*",
     "@tenace/types": "workspace:*",
     "lucide-react": "^0.469.0",

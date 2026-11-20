@@ -2,7 +2,7 @@ import { useId } from 'react';
 import { cx } from '@/lib/format';
 
 /**
- * Tenace mark: a "T" whose bar rises to the right (progress) with an orange spark (effort).
+ * Tenace mark: a "T" whose bar rises to the right (progress) with an orange spark above it (effort).
  * Same geometry as docs/brand/tenace-mark.svg.
  */
 export function TenaceMark({ className, title = 'Tenace' }: { className?: string; title?: string }) {
@@ -16,9 +16,9 @@ export function TenaceMark({ className, title = 'Tenace' }: { className?: string
         </linearGradient>
       </defs>
       <rect width="64" height="64" rx="18" fill={`url(#tg-${id})`} />
-      <path d="M16 26.5 L42 20" stroke="#fff" strokeWidth="8" strokeLinecap="round" fill="none" />
-      <path d="M29.5 23.4 V47" stroke="#fff" strokeWidth="8" strokeLinecap="round" fill="none" />
-      <circle cx="50" cy="15" r="5" fill="#FF7A1A" />
+      <path d="M19 28.5 L45 22" stroke="#fff" strokeWidth="8" strokeLinecap="round" fill="none" />
+      <path d="M32.5 25.4 V49" stroke="#fff" strokeWidth="8" strokeLinecap="round" fill="none" />
+      <circle cx="32.5" cy="12.5" r="5" fill="#FF7A1A" />
     </svg>
   );
 }

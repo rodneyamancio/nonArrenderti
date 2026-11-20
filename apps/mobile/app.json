@@ -1,0 +1,72 @@
+{
+  "expo": {
+    "name": "Tenace",
+    "slug": "tenace",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "tenace",
+    "userInterfaceStyle": "automatic",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "platforms": [
+      "ios",
+      "android",
+      "web"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "family.amancio.tenace",
+      "infoPlist": {
+        "NSCameraUsageDescription": "O Tenace usa a câmera só para tirar a foto do registro ou do comprovante que você escolher enviar.",
+        "NSPhotoLibraryUsageDescription": "O Tenace abre suas fotos só para você escolher a imagem do registro ou do comprovante.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "family.amancio.tenace",
+      "adaptiveIcon": {
+        "backgroundColor": "#6D3BFF",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO"
+      ],
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "output": "single",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#F6F4FB",
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 96,
+          "dark": {
+            "backgroundColor": "#0E0C15",
+            "image": "./assets/images/splash-icon.png"
+          }
+        }
+      ],
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "O Tenace abre suas fotos só para você escolher a imagem do registro ou do comprovante.",
+          "cameraPermission": "O Tenace usa a câmera só para tirar a foto do registro ou do comprovante que você escolher enviar.",
+          "microphonePermission": false
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}

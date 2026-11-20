@@ -9,11 +9,12 @@ COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY packages/config/package.json packages/config/
 COPY packages/types/package.json packages/types/
 COPY packages/rules/package.json packages/rules/
+COPY packages/api-client/package.json packages/api-client/
 COPY apps/web/package.json apps/web/
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile --filter @tenace/web...
 COPY packages packages
 COPY apps/web apps/web
-RUN pnpm --filter @tenace/types build && pnpm --filter @tenace/rules build && pnpm --filter @tenace/web build
+RUN pnpm --filter @tenace/types build && pnpm --filter @tenace/rules build && pnpm --filter @tenace/api-client build && pnpm --filter @tenace/web build
 
 FROM node:22-bookworm-slim AS runtime
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1

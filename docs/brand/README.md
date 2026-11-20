@@ -5,7 +5,7 @@
 ## Mark
 
 A rounded violet square with a white **T** whose bar **rises to the right** (progress)
-and an orange **spark** (the effort that keeps it going).
+and an orange **spark** centered above it (the effort that keeps it going — and a head: the T is also a person).
 
 | File | Use |
 | --- | --- |

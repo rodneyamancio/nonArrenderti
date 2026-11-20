@@ -45,10 +45,13 @@ Structured logs (pino), Sentry, audit log for admin actions.
 ## Phase 10 — Tests ⏳
 Playwright E2E of the main journey at 375 px and desktop; CI gate.
 
-## Phase 10b — Mobile app (`vg-mobile`) ⏳
-Expo + expo-router; extract `packages/api-client` and `packages/ui` tokens; Bearer sessions;
-push notifications (week reminders, payment confirmed).
-✅ App logs in against the same API and passes pure-logic tests.
+## Phase 10b — Mobile app (`vg-mobile`) ✅ (store publishing and push pending)
+Expo SDK 58 + expo-router in `apps/mobile`; `packages/api-client` extracted (web uses it too);
+tokens kept per app with a parity test instead of `packages/ui`; Bearer sessions in SecureStore;
+all member/admin screens of the portal.
+✅ App signs up/logs in against the same API (web proxy forwards `Authorization`), passes
+pure-logic tests (session, rules, links, parity) and was exercised in the iOS simulator.
+⏳ Needs the Expo account: EAS builds (TestFlight / Play internal), OTA, push notifications.
 
 ## Phase 11 — CI (`vg-deploy`) — not wanted for now
 The deploy script runs typecheck + tests locally before shipping.

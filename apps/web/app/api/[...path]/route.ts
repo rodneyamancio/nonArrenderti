@@ -9,7 +9,7 @@ import type { NextRequest } from 'next/server';
 export const dynamic = 'force-dynamic';
 
 const API = (process.env.API_INTERNAL_URL ?? 'http://localhost:3311').replace(/\/+$/, '');
-const FORWARD_REQUEST = ['content-type', 'cookie', 'user-agent', 'x-requested-with', 'origin', 'accept', 'x-forwarded-for', 'x-real-ip', 'calebe-signature', 'calebe-event-id', 'calebe-event-type', 'calebe-delivery-id'];
+const FORWARD_REQUEST = ['authorization', 'content-type', 'cookie', 'user-agent', 'x-requested-with', 'origin', 'accept', 'x-forwarded-for', 'x-real-ip', 'calebe-signature', 'calebe-event-id', 'calebe-event-type', 'calebe-delivery-id'];
 const FORWARD_RESPONSE = ['content-type', 'content-disposition', 'retry-after', 'cache-control'];
 
 async function proxy(req: NextRequest, ctx: { params: Promise<{ path: string[] }> }): Promise<Response> {

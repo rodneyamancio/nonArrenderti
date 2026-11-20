@@ -11,7 +11,7 @@ vai para o caixa do grupo.
 - Conta corrente por membro (extrato) e caixa do grupo (a receber, recebido, gasto)
 - Registro com foto opcional, reações e contestação
 - PIX copia-e-cola/QR gerado localmente para pagar as multas (o app só registra os valores)
-- Web responsiva (PWA), pronta para app Expo
+- Web responsiva (PWA) e app iOS/Android (Expo) na mesma API — ver `apps/mobile/README.md`
 
 Produção: https://tenace.amancio.family
 
@@ -24,6 +24,7 @@ pnpm infra:up       # postgres + redis (docker)
 pnpm db:migrate
 pnpm --filter @tenace/api build && pnpm db:seed   # admin + grupo de demonstração
 pnpm dev            # api :3311 · web :3310
+pnpm --filter @tenace/mobile start   # app no Expo Go / simulador
 ```
 
 Logins de demonstração: `ana@demo.tenace`, `bruno@demo.tenace`, `carla@demo.tenace` — senha =
@@ -31,7 +32,7 @@ Logins de demonstração: `ana@demo.tenace`, `bruno@demo.tenace`, `carla@demo.te
 
 ```bash
 pnpm typecheck
-pnpm test           # regras (unit) + API (integração com Postgres/Redis reais)
+pnpm test           # regras, api-client, app (lógica + paridade) e API (integração)
 ```
 
 ## Deploy

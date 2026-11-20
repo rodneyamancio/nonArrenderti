@@ -10,10 +10,10 @@ cd "$(git rev-parse --show-toplevel)"
 [[ -z "$(git status --porcelain)" ]] || { echo "ERRO: árvore com alterações não commitadas — a release precisa ser um commit." >&2; exit 1; }
 SHA="$(git rev-parse HEAD)"
 echo "=== Verificação local (typecheck + testes) — $SHA"
-pnpm --filter @tenace/types --filter @tenace/rules build >/dev/null
+pnpm --filter @tenace/types --filter @tenace/rules --filter @tenace/api-client build >/dev/null
 (cd apps/api && npx tsc --noEmit -p tsconfig.json)
 (cd apps/web && npx tsc --noEmit)
-pnpm --filter @tenace/rules --filter @tenace/api test >/dev/null
+pnpm --filter @tenace/rules --filter @tenace/api-client --filter @tenace/api test >/dev/null
 
 echo "=== Enviando release"
 TMP="$(mktemp -d)"

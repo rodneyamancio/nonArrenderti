@@ -4,14 +4,36 @@
     {
       "name": "tenace-api",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@tenace/api", "dev"],
+      "runtimeArgs": [
+        "--filter",
+        "@tenace/api",
+        "dev"
+      ],
       "port": 3311
     },
     {
       "name": "tenace-web",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@tenace/web", "dev"],
+      "runtimeArgs": [
+        "--filter",
+        "@tenace/web",
+        "dev"
+      ],
       "port": 3310
+    },
+    {
+      "name": "tenace-mobile",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "@tenace/mobile",
+        "exec",
+        "expo",
+        "start",
+        "--port",
+        "8081"
+      ],
+      "port": 8081
     }
   ]
 }
