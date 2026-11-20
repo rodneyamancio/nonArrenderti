@@ -1,7 +1,8 @@
 'use client';
 import { describeGoal, normalizeGoal, WEEKDAY_LABELS, weeklyCommitmentCents } from '@tenace/rules';
 import type { GoalInput, MemberView } from '@tenace/types';
-import { Chip, Field, Input, MoneyInput, Segmented, Select } from '@/components/ui';
+import { Minus, Plus } from 'lucide-react';
+import { Button, Chip, Field, Input, MoneyInput, Segmented, Select } from '@/components/ui';
 import { cx, formatCents } from '@/lib/format';
 
 export const GOAL_TEMPLATES: (GoalInput & { label: string })[] = [
@@ -107,8 +108,26 @@ export function GoalFields({ value, onChange, members, idPrefix = 'goal' }: { va
       )}
 
       {weeklyQty && (
-        <Field label="Dividir em quantas cotas?" htmlFor={`${idPrefix}-slots`} hint={`Cada ${Math.max(1, Math.round((value.target || 1) / (value.slotsPerWeek || 1)))} ${value.unit} paga uma cota.`}>
-          <Input id={`${idPrefix}-slots`} inputMode="numeric" value={value.slotsPerWeek ?? 1} onChange={(e) => set({ slotsPerWeek: Math.max(1, Math.min(50, Number(e.target.value.replace(/\D/g, '')) || 1)) })} />
+        <Field label="Dividir em quantas cotas?" htmlFor={`${idPrefix}-slots`} hint={slotsHint(value)}>
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="outline" size="icon" aria-label="Menos cotas" onClick={() => set({ slotsPerWeek: Math.max(1, (value.slotsPerWeek || 1) - 1) })}>
+              <Minus className="h-4 w-4" />
+            </Button>
+            {/* Empty while typing (0 = empty); validated on save, never forced back to 1 mid-edit. */}
+            <Input
+              id={`${idPrefix}-slots`}
+              inputMode="numeric"
+              className="w-24 text-center text-lg font-bold tabular-nums"
+              value={value.slotsPerWeek === 0 ? '' : (value.slotsPerWeek ?? 1)}
+              onChange={(e) => {
+                const digits = e.target.value.replace(/\D/g, '');
+                set({ slotsPerWeek: digits === '' ? 0 : Math.min(50, Number(digits)) });
+              }}
+            />
+            <Button type="button" variant="outline" size="icon" aria-label="Mais cotas" onClick={() => set({ slotsPerWeek: Math.min(50, Math.max(1, value.target || 1), (value.slotsPerWeek || 1) + 1) })}>
+              <Plus className="h-4 w-4" />
+            </Button>
+          </div>
         </Field>
       )}
 
@@ -144,11 +163,24 @@ export function GoalFields({ value, onChange, members, idPrefix = 'goal' }: { va
   );
 }
 
+function slotsHint(g: GoalInput): string {
+  const slots = g.slotsPerWeek ?? 1;
+  if (!slots) return 'Digite em quantas cotas a meta da semana é dividida.';
+  if (g.target && slots > g.target) return `No máximo ${g.target} cotas para esta meta.`;
+  const step = (g.target || 1) / slots;
+  const each = Number.isInteger(step) ? String(step) : `~${Math.ceil(step)}`;
+  return `Cada ${each} ${g.unit} paga uma cota.`;
+}
+
 export function goalInputProblem(g: GoalInput): string | null {
   if (g.name.trim().length < 2) return 'Dê um nome para a meta';
   if (!g.target || g.target < 1) return 'Defina a meta (número maior que zero)';
   if (!g.stakeCents || g.stakeCents < 1) return 'Defina o valor da cota';
   if (g.period === 'daily' && g.activeWeekdays.length === 0) return 'Escolha pelo menos um dia';
   if (!g.unit.trim()) return 'Defina a unidade';
+  if (g.period === 'weekly' && g.unit !== 'times') {
+    if (g.slotsPerWeek === 0) return 'Diga em quantas cotas dividir a meta';
+    if ((g.slotsPerWeek ?? 1) > g.target) return `No máximo ${g.target} cotas para esta meta`;
+  }
   return null;
 }

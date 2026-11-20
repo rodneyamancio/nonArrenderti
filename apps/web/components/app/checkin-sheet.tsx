@@ -135,7 +135,7 @@ export function CheckInSheet({ target, onClose }: { target: CheckInTarget | null
           <Button variant="ghost" type="button" onClick={onClose}>
             Cancelar
           </Button>
-          <Button type="submit" form="checkin-form" loading={saving} disabled={!goal} size="lg" className="sm:min-w-40">
+          <Button type="submit" form="checkin-form" loading={saving} disabled={!goal || quantity < 1} size="lg" className="sm:min-w-40">
             Registrar
           </Button>
         </>
@@ -191,10 +191,10 @@ export function CheckInSheet({ target, onClose }: { target: CheckInTarget | null
         {goal && !isTimes(goal.unit) && (
           <Field label={`Quantidade (${goal.unit})`} htmlFor="ci-qty">
             <div className="flex items-center gap-2">
-              <Button type="button" variant="outline" size="icon" aria-label="Menos" onClick={() => setQuantity((q) => Math.max(1, q - 1))}>
+              <Button type="button" variant="outline" size="icon" aria-label="Menos" onClick={() => setQuantity((q) => Math.max(1, (q || 1) - 1))}>
                 <Minus className="h-4 w-4" />
               </Button>
-              <Input id="ci-qty" inputMode="numeric" className="w-28 text-center text-lg font-bold tabular-nums" value={quantity} onChange={(e) => setQuantity(Math.max(1, Math.min(10000, Number(e.target.value.replace(/\D/g, '')) || 1)))} />
+              <Input id="ci-qty" inputMode="numeric" className="w-28 text-center text-lg font-bold tabular-nums" value={quantity || ''} onChange={(e) => setQuantity(Math.min(10000, Number(e.target.value.replace(/\D/g, '')) || 0))} />
               <Button type="button" variant="outline" size="icon" aria-label="Mais" onClick={() => setQuantity((q) => Math.min(10000, q + 1))}>
                 <Plus className="h-4 w-4" />
               </Button>
