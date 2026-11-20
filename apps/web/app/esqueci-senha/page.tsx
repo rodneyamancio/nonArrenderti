@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AuthFrame } from '@/components/auth-frame';
 import { Button, Field, Input, Notice } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
@@ -10,6 +10,12 @@ export default function ForgotPage() {
   const [sent, setSent] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [emailOn, setEmailOn] = useState<boolean | null>(null);
+  useEffect(() => {
+    api<{ passwordResetByEmail: boolean }>('/auth/capabilities')
+      .then((r) => setEmailOn(r.passwordResetByEmail))
+      .catch(() => setEmailOn(true));
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -27,7 +33,11 @@ export default function ForgotPage() {
 
   return (
     <AuthFrame title="Esqueceu a senha?" subtitle="Mandamos um link para você criar uma nova." footer={<Link href="/entrar" className="font-semibold text-brand">Voltar para entrar</Link>}>
-      {sent ? (
+      {emailOn === false ? (
+        <Notice tone="info" title="Fale com o administrador">
+          O envio de e-mails ainda não está ativo. Peça ao administrador do Tenace para redefinir sua senha — ele pode definir uma nova ou te mandar um link de redefinição.
+        </Notice>
+      ) : sent ? (
         <Notice tone="success" title="Confira seu e-mail">
           Se existir uma conta com esse e-mail, você vai receber um link válido por 1 hora.
         </Notice>

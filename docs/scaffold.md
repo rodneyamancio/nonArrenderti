@@ -35,6 +35,10 @@ Tokens light/dark, shell (sidebar desktop, bottom nav + FAB on phones), auth scr
 Groups/members/invites · goals · weeks engine · check-ins/feed/contests · ledgers/payments/PIX ·
 notifications. ✅ `pnpm --filter @tenace/api test` green (11 integration tests).
 
+## Phase 8b — Platform admin + integrations ✅
+`/admin`: users (manual password, reset link, block, promote), Resend and Calebe Pay with
+encrypted credentials, Calebe Pay webhook. ✅ 17 API integration tests.
+
 ## Phase 9 — Observability + audit ⏳
 Structured logs (pino), Sentry, audit log for admin actions.
 
@@ -46,8 +50,8 @@ Expo + expo-router; extract `packages/api-client` and `packages/ui` tokens; Bear
 push notifications (week reminders, payment confirmed).
 ✅ App logs in against the same API and passes pure-logic tests.
 
-## Phase 11 — CI (`vg-deploy`) ⏳
-GitHub Actions: typecheck → test (Postgres/Redis services) → build.
+## Phase 11 — CI (`vg-deploy`) — not wanted for now
+The deploy script runs typecheck + tests locally before shipping.
 
 ## Phase 12 — Production (`vg-deploy`) ✅
 Dockerfiles, `infra/compose/compose.prod.yaml`, host nginx + certbot, `deploy.sh`,

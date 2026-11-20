@@ -478,3 +478,45 @@ model Notification {
   @@index([userId, createdAt])
   @@map("notifications")
 }
+
+/// Provider credentials (Resend, Calebe Pay…). `secrets` is AES-256-GCM ciphertext bound to the key (vg-segredos).
+model IntegrationSetting {
+  key       String   @id
+  enabled   Boolean  @default(false)
+  config    Json
+  secrets   String?
+  updatedBy String?
+  updatedAt DateTime @updatedAt
+
+  @@map("integration_settings")
+}
+
+/// Inbound provider webhooks, stored before processing (idempotent by provider event id).
+model WebhookEvent {
+  id          String    @id
+  provider    String
+  type        String
+  livemode    Boolean   @default(false)
+  payload     Json
+  receivedAt  DateTime  @default(now())
+  processedAt DateTime?
+  error       String?
+
+  @@index([provider, receivedAt])
+  @@map("webhook_events")
+}
+
+/// Platform-admin actions (who did what; never secret values).
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String?
+  action    String
+  entity    String
+  entityId  String?
+  meta      Json?
+  ip        String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@map("audit_logs")
+}

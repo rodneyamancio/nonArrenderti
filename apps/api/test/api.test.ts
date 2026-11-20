@@ -204,3 +204,63 @@ describe('weekly money math (user example: −R$30 → −R$5)', () => {
     expect((await ana.get(`/groups/${groupId}/fund`)).data.receivableCents).toBe(500);
   });
 });
+
+describe('platform admin, integrations and webhooks', () => {
+  const admin = new Client();
+  let anaId = '';
+  const prisma = () => app.get((nodeRequire(DIST + 'common/prisma.service.js') as typeof import('../src/common/prisma.service')).PrismaService);
+
+  it('admin routes are invisible to regular users', async () => {
+    expect((await ana.get('/admin/users')).status).toBe(404);
+    expect((await ana.req('PUT', '/admin/integrations/calebepay', { enabled: true })).status).toBe(404);
+  });
+
+  it('platform admin defines a password manually and old sessions end', async () => {
+    await admin.post('/auth/signup', { name: 'Admin', email: 'admin@test.dev', password: 'senha1234' });
+    await prisma().user.update({ where: { email: 'admin@test.dev' }, data: { role: 'platform_admin' } });
+    const users = (await admin.get('/admin/users?q=ana@')).data.users;
+    anaId = users[0].id;
+    expect((await admin.post(`/admin/users/${anaId}/password`, { password: 'curta' })).status).toBe(400);
+    expect((await admin.post(`/admin/users/${anaId}/password`, { password: 'novaSenha99' })).status).toBe(200);
+    expect((await ana.get('/auth/me')).status).toBe(401);
+    expect((await ana.post('/auth/login', { email: 'ana@test.dev', password: 'novaSenha99' })).status).toBe(200);
+  });
+
+  it('reset link from the admin works once', async () => {
+    const r = await admin.post(`/admin/users/${anaId}/reset-link`);
+    const token = new URL(r.data.url).searchParams.get('token');
+    expect((await new Client().post('/auth/password-reset/confirm', { token, password: 'outraSenha77' })).status).toBe(200);
+    expect((await new Client().post('/auth/password-reset/confirm', { token, password: 'outraSenha88' })).status).toBe(400);
+    expect((await ana.post('/auth/login', { email: 'ana@test.dev', password: 'outraSenha77' })).status).toBe(200);
+  });
+
+  it('capabilities report no e-mail provider by default', async () => {
+    expect((await new Client().get('/auth/capabilities')).data.passwordResetByEmail).toBe(false);
+  });
+
+  it('Calebe Pay secrets are stored encrypted and never returned', async () => {
+    const r = await admin.req('PUT', '/admin/integrations/calebepay', { enabled: true, config: {}, secrets: { apiKey: 'cp_test_abcdefghijklmnop1234', webhookSecret: 'whsec_test_secret_value_9876' } });
+    expect(r.status).toBe(200);
+    expect(JSON.stringify(r.data)).not.toContain('abcdefghijklmnop');
+    expect(r.data.secrets.apiKey).toEqual({ set: true, hint: 'cp_test_…1234' });
+    const row = await prisma().integrationSetting.findUnique({ where: { key: 'calebepay' } });
+    expect(row?.secrets).toMatch(/^v1\./);
+    expect(row?.secrets).not.toContain('cp_test_');
+    // Keep the API key when only toggling.
+    const again = await admin.req('PUT', '/admin/integrations/calebepay', { enabled: true });
+    expect(again.data.secrets.apiKey.set).toBe(true);
+  });
+
+  it('webhook: valid signature stored once, invalid rejected', async () => {
+    const { createHmac } = await import('node:crypto');
+    const body = JSON.stringify({ id: 'evt_test_1', type: 'transaction.updated', livemode: false, data: { id: 'tx_1', status: 'paid', reference: 'license-1' } });
+    const t = Math.floor(Date.now() / 1000);
+    const sig = `t=${t},v1=${createHmac('sha256', 'whsec_test_secret_value_9876').update(`${t}.${body}`).digest('hex')}`;
+    const send = (signature: string) => fetch(`${url}/webhooks/calebepay`, { method: 'POST', headers: { 'content-type': 'application/json', 'calebe-signature': signature }, body });
+    expect((await send(sig)).status).toBe(200);
+    expect(await (await send(sig)).json()).toEqual({ ok: true, duplicate: true });
+    expect((await send(`t=${t},v1=deadbeef`)).status).toBe(401);
+    const stored = await prisma().webhookEvent.findUnique({ where: { id: 'evt_test_1' } });
+    expect(stored?.processedAt).toBeTruthy();
+  });
+});

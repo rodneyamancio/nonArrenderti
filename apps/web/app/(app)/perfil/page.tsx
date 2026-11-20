@@ -1,6 +1,7 @@
 'use client';
 import { BRAND_COLORS, type SessionUser } from '@tenace/types';
-import { LogOut, Monitor, Moon, Sun } from 'lucide-react';
+import { LogOut, Monitor, Moon, Shield, Sun } from 'lucide-react';
+import Link from 'next/link';
 import { useTheme } from 'next-themes';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -117,6 +118,12 @@ export default function ProfilePage() {
           </Button>
         </form>
       </Card>
+
+      {user.role === 'platform_admin' && (
+        <Link href="/admin" className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 font-semibold shadow-xs hover:bg-accent">
+          <Shield className="h-5 w-5 text-brand" aria-hidden /> Administração da plataforma
+        </Link>
+      )}
 
       <Button variant="ghost" className="self-start text-danger" onClick={logout}>
         <LogOut className="h-4 w-4" aria-hidden /> Sair da conta

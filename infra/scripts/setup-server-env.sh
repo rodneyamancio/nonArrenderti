@@ -15,6 +15,7 @@ POSTGRES_USER=tenace
 POSTGRES_PASSWORD=$(rand 36 40)
 POSTGRES_DB=tenace
 APP_WEB_URL=https://$DOMAIN
+ENCRYPTION_KEY=$(openssl rand -base64 32)
 SMTP_URL=
 MAIL_FROM="Tenace <nao-responda@$DOMAIN>"
 SEED_ADMIN_EMAIL=${ADMIN_EMAIL:-admin@$DOMAIN}

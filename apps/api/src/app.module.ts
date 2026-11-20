@@ -7,7 +7,10 @@ import { PrismaService } from './common/prisma.service';
 import { RedisService } from './common/redis.service';
 import { Public } from './modules/auth/auth.guard';
 import { AuthModule } from './modules/auth/auth.module';
+import { AdminController, PlatformAdminGuard } from './modules/admin/admin.controller';
 import { DomainModule } from './modules/domain/domain.module';
+import { WebhooksController } from './modules/integrations/webhooks.controller';
+import { MailService } from './common/mail.service';
 
 @Controller()
 @Public()
@@ -16,11 +19,18 @@ export class HealthController {
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
     private readonly envs: EnvService,
+    private readonly mail: MailService,
   ) {}
 
   @Get('health')
   health() {
     return { ok: true, build: this.envs.env.BUILD_SHA || 'dev' };
+  }
+
+  /** What the public screens can offer (e.g. "forgot password" needs an e-mail provider). */
+  @Get('auth/capabilities')
+  async capabilities() {
+    return { passwordResetByEmail: await this.mail.enabled() };
   }
 
   @Get('ready')
@@ -33,7 +43,7 @@ export class HealthController {
 
 @Module({
   imports: [InfraModule, AuthModule, DomainModule],
-  controllers: [HealthController],
-  providers: [{ provide: APP_FILTER, useClass: HttpExceptionFilter }],
+  controllers: [HealthController, AdminController, WebhooksController],
+  providers: [{ provide: APP_FILTER, useClass: HttpExceptionFilter }, PlatformAdminGuard],
 })
 export class AppModule {}

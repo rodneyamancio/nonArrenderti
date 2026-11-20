@@ -11,6 +11,7 @@ export async function createApp(): Promise<NestExpressApplication> {
   const env = loadEnv(); // fails fast on invalid/placeholder config
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bodyParser: false,
+    rawBody: true, // webhook signatures are computed over the exact bytes
     logger: env.LOG_LEVEL === 'debug' ? ['error', 'warn', 'log', 'debug'] : env.LOG_LEVEL === 'log' ? ['error', 'warn', 'log'] : [env.LOG_LEVEL, 'error'],
   });
   // nginx → web (Next proxy) → api. Without this req.ip is the proxy and rate limits collapse into one bucket.

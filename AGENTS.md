@@ -48,7 +48,9 @@ Expo later (mobile).
 5. Week math lives in `packages/rules` (pure, tested). Week open/close/recompute live in
    `WeeksService` and must stay idempotent.
 6. Goal edits apply from the **next** week (snapshots in `week_goals`).
-7. External integrations behind a service (`MailService`, `StorageService`).
+7. External integrations behind a service (`MailService`, `StorageService`, `PaymentsService` →
+   `PaymentProvider`). Provider credentials live encrypted in `integration_settings` (edited in
+   `/admin`), never in env or code, and are never returned to the client.
 8. No hard-coded environment; env validated by Zod.
 
 ## Domain naming

@@ -1,6 +1,6 @@
 'use client';
 import type { OverviewGroup, SessionUser } from '@tenace/types';
-import { Bell, Home, LayoutGrid, Plus, UserRound } from 'lucide-react';
+import { Bell, Home, LayoutGrid, Plus, Shield, UserRound } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
@@ -55,6 +55,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     { href: '/grupos', label: 'Grupos', icon: LayoutGrid },
     { href: '/perfil', label: 'Perfil', icon: UserRound },
   ];
+  const sideNav = user.role === 'platform_admin' ? [...nav, { href: '/admin', label: 'Administração', icon: Shield }] : nav;
   const isActive = (href: string) => pathname === href || (href === '/grupos' && (pathname.startsWith('/g/') || pathname.startsWith('/grupos')));
 
   return (
@@ -76,7 +77,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Plus className="h-5 w-5" aria-hidden /> Registrar atividade
           </button>
           <nav aria-label="Principal" className="flex flex-col gap-1">
-            {nav.map((n) => (
+            {sideNav.map((n) => (
               <Link
                 key={n.href}
                 href={n.href}

@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import nodemailer, { type Transporter } from 'nodemailer';
+import { IntegrationsService } from '../modules/integrations/integrations.service';
 import { EnvService } from './env.service';
+import { fetchJson } from './http';
 
 export interface MailMessage {
   to: string;
@@ -9,29 +11,70 @@ export interface MailMessage {
   html?: string;
 }
 
-/** MailProvider: SMTP when SMTP_URL is set, otherwise the message is only logged. */
+export type MailChannel = 'resend' | 'smtp' | 'log';
+
+/**
+ * MailProvider. Order: Resend (configured by the platform admin, credentials encrypted in
+ * the database) → SMTP (SMTP_URL) → log only. Failures are logged, never thrown at the caller.
+ */
 @Injectable()
 export class MailService {
   private readonly logger = new Logger('Mail');
-  private readonly transport: Transporter | null;
-  constructor(private readonly envs: EnvService) {
-    this.transport = envs.env.SMTP_URL ? nodemailer.createTransport(envs.env.SMTP_URL) : null;
+  private readonly smtp: Transporter | null;
+  constructor(
+    private readonly envs: EnvService,
+    private readonly integrations: IntegrationsService,
+  ) {
+    this.smtp = envs.env.SMTP_URL ? nodemailer.createTransport(envs.env.SMTP_URL) : null;
   }
 
-  get enabled(): boolean {
-    return !!this.transport;
+  async channel(): Promise<MailChannel> {
+    const r = await this.integrations.load('resend');
+    if (r.enabled && r.secrets.apiKey && r.config.fromEmail) return 'resend';
+    return this.smtp ? 'smtp' : 'log';
   }
 
-  async send(msg: MailMessage): Promise<void> {
-    if (!this.transport) {
-      this.logger.log(`(sem SMTP) para=${msg.to} assunto="${msg.subject}"\n${msg.text}`);
-      return;
-    }
+  async enabled(): Promise<boolean> {
+    return (await this.channel()) !== 'log';
+  }
+
+  /** Sends and returns the provider id. Throws only when `strict` (used by the admin "send test"). */
+  async send(msg: MailMessage, strict = false): Promise<string | null> {
     try {
-      await this.transport.sendMail({ from: this.envs.env.MAIL_FROM, ...msg });
+      const channel = await this.channel();
+      if (channel === 'resend') return await this.sendResend(msg);
+      if (channel === 'smtp') {
+        const info = await this.smtp!.sendMail({ from: this.envs.env.MAIL_FROM, ...msg });
+        return String(info.messageId ?? 'smtp');
+      }
+      this.logger.log(`(sem provedor de e-mail) para=${msg.to} assunto="${msg.subject}"`);
+      if (strict) throw new Error('Nenhum provedor de e-mail configurado');
+      return null;
     } catch (e) {
       this.logger.error(`falha ao enviar e-mail para ${msg.to}: ${(e as Error).message}`);
+      if (strict) throw e;
+      return null;
     }
+  }
+
+  /** Resend API (https://resend.com/docs/api-reference/emails/send-email). */
+  private async sendResend(msg: MailMessage): Promise<string> {
+    const r = await this.integrations.load('resend');
+    const name = r.config.fromName.replace(/[<>"]/g, '');
+    const { data } = await fetchJson<{ id: string }>('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${r.secrets.apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: name ? `${name} <${r.config.fromEmail}>` : r.config.fromEmail,
+        to: [msg.to],
+        subject: msg.subject,
+        text: msg.text,
+        html: msg.html,
+        ...(r.config.replyTo ? { reply_to: r.config.replyTo } : {}),
+      }),
+      timeoutMs: 15_000,
+    });
+    return data.id;
   }
 
   /** Simple branded layout. */

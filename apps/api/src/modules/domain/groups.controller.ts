@@ -298,8 +298,9 @@ export class GroupsController {
       },
     });
     const url = `${this.envs.env.APP_WEB_URL}/convite/${token}`;
+    let emailSent = false;
     if (input.kind === 'email') {
-      await this.mail.send({
+      emailSent = !!(await this.mail.send({
         to: input.email,
         subject: `${req.user!.name} te convidou para ${g.name} no Tenace`,
         text: `${req.user!.name} te convidou para o grupo ${g.emoji} ${g.name} no Tenace — metas semanais com um empurrãozinho do grupo. Aceite em: ${url}`,
@@ -308,11 +309,11 @@ export class GroupsController {
           `${escapeHtml(req.user!.name)} te convidou para o grupo no Tenace: metas semanais, cotas e um caixa para quem não cumprir. Bora?`,
           { label: 'Aceitar convite', url },
         ),
-      });
+      }));
       const invitee = await this.prisma.user.findUnique({ where: { email: input.email } });
       if (invitee) await this.notify.users([invitee.id], { type: 'invite', title: `Convite para ${g.emoji} ${g.name}`, body: `${req.user!.name} te convidou para o grupo.`, link: `/convite/${token}` });
     }
-    return { id: inv.id, token, url, emailSent: input.kind === 'email' && this.mail.enabled };
+    return { id: inv.id, token, url, emailSent };
   }
 
   @Delete('groups/:groupId/invites/:inviteId')

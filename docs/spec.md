@@ -145,9 +145,21 @@ Errors follow the VGStack contract (stable codes, e.g. `GROUP_NOT_FOUND`,
 
 ## 7. Platform (super-admin)
 
-v0.1: the seed creates a `platform_admin` account (`SEED_ADMIN_*`); the admin screens
-(list/search users and groups, block a user, job health) are **not built yet**. No plans,
-billing or feature flags.
+`/admin` (system role `platform_admin`; anyone else gets 404). The seed creates the first
+admin from `SEED_ADMIN_*`.
+
+- **Users:** search, **define a password manually** (ends that user's sessions), generate a
+  single-use **reset link** (24 h) to send by WhatsApp, block/unblock (blocking ends sessions),
+  promote/demote platform admin (never yourself).
+- **Integrations:** Resend and Calebe Pay — config + write-only secrets, encrypted in the
+  database (AES-256-GCM bound to the integration key, `ENCRYPTION_KEY`), shown only as a hint
+  (`cp_test_…1234`); "send test e-mail" / "test connection".
+- **System:** counts, current e-mail channel, last Calebe Pay webhooks.
+- Every admin action is written to `audit_logs` (never secret values).
+- Emergency from the server shell: `NEW_PASSWORD=… node dist/cli/set-password.js <email> [--admin]`
+  inside the api container.
+
+No plans, billing or feature flags yet.
 
 ## 8. Functional modules
 
@@ -297,11 +309,13 @@ sidebar on desktop (`vg-navegacao`, simplified: no ⌘K in v1).
 
 | Interface | Implementations | Env |
 | --- | --- | --- |
-| `MailService` | SMTP via nodemailer when `SMTP_URL` is set; otherwise messages are only logged | `SMTP_URL`, `MAIL_FROM` |
+| `MailService` | **Resend** (configured in `/admin`, encrypted) → SMTP (`SMTP_URL`) → log only. `GET /auth/capabilities` tells the web whether "forgot password" can send e-mail; otherwise it tells the user to ask the admin | `SMTP_URL`, `MAIL_FROM` (fallback) |
+| `PaymentProvider` → `CalebePayProvider` | **Calebe Pay** REST /v1 (`X-API-Key`; `cp_test_` = sandbox, `cp_live_` = production): `createCheckout`, `getCheckout`, `getTransaction`, `ping`. Built by `PaymentsService.provider()` from the encrypted credentials. **No flow charges yet** — ready for license sales or PIX charges of penalties | credentials in `/admin` |
+| Calebe Pay webhook | `POST /api/webhooks/calebepay`, HMAC `Calebe-Signature` (5 min tolerance), stored in `webhook_events` before processing, idempotent by event id; `PaymentsService.handleCalebeEvent` routes by `data.reference` prefix (only logs today) | webhook secret in `/admin` |
 | `StorageService` | Local disk volume (`/data/uploads` in production) | `UPLOAD_DIR` |
 
-No payment provider (decision: tracking only). PIX BR Code is generated locally in
-`packages/rules`.
+Penalties are still **tracking only** (decision #2); the static PIX BR Code is generated
+locally in `packages/rules`. Calebe Pay is connected for future real transactions.
 
 ## 10. Design system and branding
 
@@ -367,7 +381,8 @@ Only the web port is published (loopback); the API stays on the compose network.
 ## 15. Environment variables
 
 `DATABASE_URL`, `REDIS_URL`, `APP_WEB_URL`, `API_INTERNAL_URL` (web → api), `PORT`,
-`UPLOAD_DIR`, `SMTP_URL`, `MAIL_FROM`, `SESSION_TTL_HOURS`, `SESSION_IDLE_HOURS`,
+`UPLOAD_DIR`, `ENCRYPTION_KEY` (32 bytes base64; encrypts provider credentials — losing or
+rotating it means re-entering them in `/admin`), `SMTP_URL`, `MAIL_FROM`, `SESSION_TTL_HOURS`, `SESSION_IDLE_HOURS`,
 `SCHEDULER` (on/off), `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`, `SEED_DEMO_DATA`,
 `TRUST_PROXY_HOPS`, `BUILD_SHA`. Validated by Zod at boot; production refuses placeholders,
 http URLs and demo data. Local `.env` is generated with random secrets by `pnpm setup`;
@@ -390,11 +405,13 @@ the server `.env` by `infra/scripts/setup-server-env.sh` (`vg-segredos`).
 | 11 | Auth | Opaque session (cookie on web, Bearer on mobile) |
 | 12 | First week "start now" | Daily goals count only from the creation day; weekly goals count in full |
 | 13 | Leaving / removal | Effective after the current week closes; open debt stays payable |
+| 14 | E-mail | Resend, credentials in `/admin`; manual password definition by the platform admin meanwhile |
+| 15 | Payments provider | Calebe Pay connected (provider + webhook), no flow charges yet; no CI for now |
 
 ## 17. Open questions
 
-1. SMTP provider for production e-mails (invites, password reset, week summary). Without
-   it, invites still work by link; password reset needs it.
+1. Resend account + verified sending domain (then enable it in `/admin`). Until then,
+   passwords are defined by the admin and invites go by link.
 2. "Entrar com Google" in v1? (friendlier sign-up; adds an OAuth integration)
 3. Pause/vacation (member skips a week, approved by admin) — v1 or later?
 4. Can a member have **personal goals** inside a group (different targets per person),

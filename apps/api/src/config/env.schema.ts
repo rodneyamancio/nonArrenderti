@@ -10,6 +10,8 @@ export const envSchema = z
     /** Public URL of the web app. No trailing slash. */
     APP_WEB_URL: z.string().url(),
     UPLOAD_DIR: z.string().default('./uploads'),
+    /** 32 bytes, base64. Encrypts provider credentials stored in the database (rotation = re-enter them). */
+    ENCRYPTION_KEY: z.string().min(1),
     SMTP_URL: z.string().default(''),
     MAIL_FROM: z.string().default('Tenace <nao-responda@tenace.local>'),
     SESSION_TTL_HOURS: z.coerce.number().int().positive().max(24 * 90).default(24 * 30),
@@ -25,6 +27,7 @@ export const envSchema = z
     BUILD_SHA: z.string().default(''),
   })
   .superRefine((env, ctx) => {
+    if (Buffer.from(env.ENCRYPTION_KEY, 'base64').length !== 32) ctx.addIssue({ code: 'custom', path: ['ENCRYPTION_KEY'], message: 'ENCRYPTION_KEY deve ter 32 bytes em base64 (rode pnpm setup)' });
     if (env.NODE_ENV !== 'production') return;
     const PLACEHOLDER = /change-me|changeme|example|placeholder|__generated__|123456/i;
     if (!env.APP_WEB_URL.startsWith('https://')) ctx.addIssue({ code: 'custom', path: ['APP_WEB_URL'], message: 'use https em produção' });

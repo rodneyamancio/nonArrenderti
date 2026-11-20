@@ -10,6 +10,8 @@ x-api-env: &api-env
   REDIS_URL: redis://redis:6379
   APP_WEB_URL: ${APP_WEB_URL:?defina APP_WEB_URL}
   UPLOAD_DIR: /data/uploads
+  # Encrypts provider credentials (Resend, Calebe Pay) in the database. Never rotate without re-entering them.
+  ENCRYPTION_KEY: ${ENCRYPTION_KEY:?defina ENCRYPTION_KEY}
   SMTP_URL: ${SMTP_URL:-}
   MAIL_FROM: ${MAIL_FROM:-Tenace <nao-responda@tenace.amancio.family>}
   # nginx → web → api: the API trusts one hop (the web); nginx writes the real IP into X-Forwarded-For.
