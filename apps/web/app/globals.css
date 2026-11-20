@@ -1,0 +1,300 @@
+@import 'tailwindcss';
+
+/*
+ * Tenace design tokens (VGStack vg-interface): roles, light + dark.
+ * Brand: violet #6D3BFF (progress), spark #FF7A1A (effort), ink #17142B.
+ * Screens never write raw colors: they use the role utilities from the bridge below.
+ */
+:root {
+  color-scheme: light;
+  --ui-bg: #f6f4fb;
+  --ui-surface: #ffffff;
+  --ui-surface-muted: #fbfaff;
+  --ui-surface-sunken: #efecf7;
+  --ui-surface-hover: #f3f0fa;
+  --ui-overlay: rgba(23, 20, 43, 0.5);
+
+  --ui-border: #e6e2f0;
+  --ui-border-strong: #d3cde3;
+  --ui-border-input: #8a84a0;
+
+  --ui-text: #17142b;
+  --ui-text-muted: #5e5975;
+  --ui-text-subtle: #6c6784;
+
+  --ui-action: #6d3bff;
+  --ui-action-hover: #5a2be6;
+  --ui-on-action: #ffffff;
+
+  --ui-brand: #5b2ee5;
+  --ui-brand-strong: #4a1fd1;
+  --ui-brand-solid: #6d3bff;
+  --ui-brand-solid-hover: #5a2be6;
+  --ui-brand-soft: #efe9ff;
+  --ui-on-brand: #ffffff;
+
+  --ui-spark: #b84d00;
+  --ui-spark-solid: #ff7a1a;
+  --ui-spark-soft: #fff0e3;
+
+  --ui-on-solid: #ffffff;
+  --ui-success: #12804f;
+  --ui-success-solid: #14935a;
+  --ui-success-soft: #e4f6ec;
+  --ui-warning: #8f5207;
+  --ui-warning-soft: #fff4dc;
+  --ui-danger: #c42f44;
+  --ui-danger-solid: #d2364a;
+  --ui-danger-soft: #fdebee;
+  --ui-info: #2f5fd0;
+  --ui-info-soft: #e9f0ff;
+
+  --ui-focus: #6d3bff;
+  --ui-focus-ring: 0 0 0 3px rgba(109, 59, 255, 0.28);
+
+  --ui-shadow-xs: 0 1px 2px rgba(23, 20, 43, 0.05);
+  --ui-shadow-sm: 0 1px 2px rgba(23, 20, 43, 0.04), 0 4px 14px rgba(23, 20, 43, 0.05);
+  --ui-shadow-md: 0 10px 24px rgba(23, 20, 43, 0.08), 0 2px 6px rgba(23, 20, 43, 0.05);
+  --ui-shadow-lg: 0 24px 56px rgba(23, 20, 43, 0.18), 0 6px 16px rgba(23, 20, 43, 0.08);
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --ui-bg: #0e0c15;
+  --ui-surface: #16131f;
+  --ui-surface-muted: #1a1724;
+  --ui-surface-sunken: #201c2c;
+  --ui-surface-hover: #241f31;
+  --ui-overlay: rgba(0, 0, 0, 0.62);
+
+  --ui-border: #2a2538;
+  --ui-border-strong: #3a3450;
+  --ui-border-input: #8f89a8;
+
+  --ui-text: #f3f1fa;
+  --ui-text-muted: #b4aecb;
+  --ui-text-subtle: #a19bba;
+
+  --ui-action: #7b52ff;
+  --ui-action-hover: #8b66ff;
+  --ui-on-action: #ffffff;
+
+  --ui-brand: #b8a2ff;
+  --ui-brand-strong: #cbbaff;
+  --ui-brand-solid: #7b52ff;
+  --ui-brand-solid-hover: #8b66ff;
+  --ui-brand-soft: #231b3f;
+  --ui-on-brand: #ffffff;
+
+  --ui-spark: #ffa866;
+  --ui-spark-solid: #ff8a33;
+  --ui-spark-soft: #2e1e12;
+
+  --ui-success: #4fd493;
+  --ui-success-solid: #1b8a55;
+  --ui-success-soft: #10271c;
+  --ui-warning: #f0bd62;
+  --ui-warning-soft: #2b2213;
+  --ui-danger: #ff8a99;
+  --ui-danger-solid: #d2364a;
+  --ui-danger-soft: #2e1419;
+  --ui-info: #93b2ff;
+  --ui-info-soft: #17203a;
+
+  --ui-focus: #b8a2ff;
+  --ui-focus-ring: 0 0 0 3px rgba(184, 162, 255, 0.3);
+
+  --ui-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --ui-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 14px rgba(0, 0, 0, 0.3);
+  --ui-shadow-md: 0 10px 24px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.4);
+  --ui-shadow-lg: 0 24px 56px rgba(0, 0, 0, 0.66), 0 6px 16px rgba(0, 0, 0, 0.44);
+}
+
+:root {
+  --ui-font-sans: var(--font-jakarta), -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  --ui-radius-sm: 10px;
+  --ui-radius-md: 12px;
+  --ui-radius-lg: 18px;
+  --ui-radius-xl: 24px;
+  --ui-control-height: 2.75rem;
+  --ui-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ui-duration: 160ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --ui-duration: 0ms;
+  }
+}
+
+/* Group tones — gradient + readable text on top (white). */
+.tone-violet { --tone-a: #6d3bff; --tone-b: #a47bff; }
+.tone-spark { --tone-a: #e85d04; --tone-b: #ff9f43; }
+.tone-mint { --tone-a: #0b8a62; --tone-b: #34c99a; }
+.tone-sky { --tone-a: #0b6fb8; --tone-b: #38b6f5; }
+.tone-rose { --tone-a: #d0264a; --tone-b: #ff7a93; }
+.tone-sun { --tone-a: #b7791f; --tone-b: #f2c94c; }
+.tone-ink { --tone-a: #2b2640; --tone-b: #5a5373; }
+.tone-bg { background: linear-gradient(135deg, var(--tone-a), var(--tone-b)); color: #fff; }
+.tone-dot { background: linear-gradient(135deg, var(--tone-a), var(--tone-b)); }
+
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
+@theme inline {
+  --color-background: var(--ui-bg);
+  --color-foreground: var(--ui-text);
+  --color-card: var(--ui-surface);
+  --color-primary: var(--ui-action);
+  --color-primary-hover: var(--ui-action-hover);
+  --color-primary-foreground: var(--ui-on-action);
+  --color-muted: var(--ui-surface-sunken);
+  --color-muted-foreground: var(--ui-text-muted);
+  --color-accent: var(--ui-surface-hover);
+  --color-border: var(--ui-border);
+  --color-border-strong: var(--ui-border-strong);
+  --color-input: var(--ui-border-input);
+  --color-ring: var(--ui-focus);
+  --color-subtle: var(--ui-text-subtle);
+  --color-surface-muted: var(--ui-surface-muted);
+  --color-overlay: var(--ui-overlay);
+  --color-brand: var(--ui-brand);
+  --color-brand-strong: var(--ui-brand-strong);
+  --color-brand-solid: var(--ui-brand-solid);
+  --color-brand-solid-hover: var(--ui-brand-solid-hover);
+  --color-brand-soft: var(--ui-brand-soft);
+  --color-on-brand: var(--ui-on-brand);
+  --color-spark: var(--ui-spark);
+  --color-spark-solid: var(--ui-spark-solid);
+  --color-spark-soft: var(--ui-spark-soft);
+  --color-on-solid: var(--ui-on-solid);
+  --color-success: var(--ui-success);
+  --color-success-solid: var(--ui-success-solid);
+  --color-success-soft: var(--ui-success-soft);
+  --color-warning: var(--ui-warning);
+  --color-warning-soft: var(--ui-warning-soft);
+  --color-danger: var(--ui-danger);
+  --color-danger-solid: var(--ui-danger-solid);
+  --color-danger-soft: var(--ui-danger-soft);
+  --color-info: var(--ui-info);
+  --color-info-soft: var(--ui-info-soft);
+  --font-sans: var(--ui-font-sans);
+  --radius-sm: var(--ui-radius-sm);
+  --radius-md: var(--ui-radius-md);
+  --radius-lg: var(--ui-radius-lg);
+  --radius-xl: var(--ui-radius-xl);
+  --shadow-xs: var(--ui-shadow-xs);
+  --shadow-sm: var(--ui-shadow-sm);
+  --shadow-md: var(--ui-shadow-md);
+  --shadow-lg: var(--ui-shadow-lg);
+}
+
+html,
+body {
+  background: var(--ui-bg);
+  color: var(--ui-text);
+  font-family: var(--ui-font-sans);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+h1,
+h2,
+h3 {
+  letter-spacing: -0.02em;
+}
+
+:focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 2px;
+}
+
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+.touch-target {
+  min-height: 44px;
+}
+
+.form-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(14rem, 100%), 1fr));
+}
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+}
+.skip-link:focus {
+  left: 1rem;
+  top: 1rem;
+  z-index: 100;
+  background: var(--ui-surface);
+  padding: 0.5rem 1rem;
+  border-radius: var(--ui-radius-sm);
+}
+
+@keyframes t-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-in {
+  animation: t-fade-up calc(var(--ui-duration) * 2) var(--ui-ease) both;
+}
+
+@keyframes t-pop {
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.12);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.animate-pop {
+  animation: t-pop 420ms var(--ui-ease) both;
+}
+
+.overflow-x-auto,
+.overflow-y-auto,
+.overflow-auto {
+  position: relative;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Sheet: bottom on phones, centered on larger screens. */
+dialog.sheet {
+  max-height: calc(100dvh - 1rem);
+}
+@media (max-width: 639px) {
+  dialog.sheet {
+    margin: auto 0 0 0;
+    width: 100%;
+    max-width: 100%;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "name": "@tenace/api",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "prisma generate && nest build",
+    "dev": "nest start --watch --preserveWatchOutput --exec \"node --env-file-if-exists=../../.env\"",
+    "start": "node --env-file-if-exists=../../.env dist/main.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "nest build && node --env-file-if-exists=../../.env ./node_modules/vitest/vitest.mjs run",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "node --env-file-if-exists=../../.env ./node_modules/prisma/build/index.js migrate dev",
+    "prisma:deploy": "node --env-file-if-exists=../../.env ./node_modules/prisma/build/index.js migrate deploy",
+    "seed": "node --env-file-if-exists=../../.env dist/seed.js"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.0.7",
+    "@nestjs/core": "^11.0.7",
+    "@nestjs/platform-express": "^11.0.7",
+    "@node-rs/argon2": "^2.0.2",
+    "@prisma/client": "^6.3.1",
+    "@tenace/rules": "workspace:*",
+    "@tenace/types": "workspace:*",
+    "cookie-parser": "^1.4.7",
+    "helmet": "^8.0.0",
+    "ioredis": "^5.4.2",
+    "nodemailer": "^6.9.16",
+    "prisma": "^6.3.1",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.2",
+    "@tenace/config": "workspace:*",
+    "@types/cookie-parser": "^1.4.8",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.7",
+    "@types/nodemailer": "^6.4.17",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.8"
+  },
+  "prisma": { "schema": "prisma/schema.prisma" }
+}

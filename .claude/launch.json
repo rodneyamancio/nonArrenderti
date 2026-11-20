@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "tenace-api",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@tenace/api", "dev"],
+      "port": 3311
+    },
+    {
+      "name": "tenace-web",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@tenace/web", "dev"],
+      "port": 3310
+    }
+  ]
+}

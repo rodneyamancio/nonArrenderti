@@ -1,0 +1,94 @@
+# Tenace — production on a SHARED host (the host nginx owns 80/443).
+# Only the web is published, and only on loopback; the API stays on the internal network
+# (the web proxies /api). Used by infra/scripts/deploy.sh — do not run by hand without
+# the backup/migration steps of the script.
+name: tenace
+
+x-api-env: &api-env
+  NODE_ENV: production
+  DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+  REDIS_URL: redis://redis:6379
+  APP_WEB_URL: ${APP_WEB_URL:?defina APP_WEB_URL}
+  UPLOAD_DIR: /data/uploads
+  SMTP_URL: ${SMTP_URL:-}
+  MAIL_FROM: ${MAIL_FROM:-Tenace <nao-responda@tenace.amancio.family>}
+  # nginx → web → api: the API trusts one hop (the web); nginx writes the real IP into X-Forwarded-For.
+  TRUST_PROXY_HOPS: '1'
+  SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-}
+  SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}
+  SEED_DEMO_DATA: 'false'
+  BUILD_SHA: ${BUILD_SHA:-}
+  PORT: '3311'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER}']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes']
+    volumes: [redis_data:/data]
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  # One-shot: migrations + idempotent seed. Run by deploy.sh after the backup.
+  migrate:
+    image: tenace-api:${IMAGE_TAG:-latest}
+    command: ['sh', '-c', 'npx prisma migrate deploy && node dist/seed.js']
+    environment: *api-env
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    profiles: ['tools']
+
+  api:
+    image: tenace-api:${IMAGE_TAG:-latest}
+    build:
+      context: ../..
+      dockerfile: infra/docker/api.Dockerfile
+      args: { BUILD_SHA: '${BUILD_SHA:-}' }
+    restart: unless-stopped
+    environment: *api-env
+    volumes: [uploads:/data/uploads]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://localhost:3311/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  web:
+    image: tenace-web:${IMAGE_TAG:-latest}
+    build:
+      context: ../..
+      dockerfile: infra/docker/web.Dockerfile
+    restart: unless-stopped
+    environment:
+      API_INTERNAL_URL: http://api:3311
+      PORT: '3310'
+      HOSTNAME: 0.0.0.0
+    depends_on:
+      api: { condition: service_healthy }
+    ports: ['127.0.0.1:${WEB_PORT:-3310}:3310']
+
+volumes:
+  postgres_data:
+  redis_data:
+  uploads:

@@ -1,0 +1,480 @@
+// Tenace — data model. Money is integer cents. Local dates use @db.Date.
+// Group-owned tables carry groupId; access is decided by membership (see docs/spec.md §5).
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SystemRole {
+  user
+  platform_admin
+}
+
+enum GroupRole {
+  owner
+  admin
+  member
+}
+
+enum MemberStatus {
+  active
+  leaving
+  left
+  removed
+}
+
+enum GoalPeriod {
+  daily
+  weekly
+}
+
+enum WeekStatus {
+  open
+  closed
+}
+
+enum CheckInStatus {
+  valid
+  invalidated
+  deleted
+}
+
+enum ContestStatus {
+  open
+  upheld
+  dismissed
+}
+
+enum InviteKind {
+  email
+  link
+}
+
+enum JoinRequestStatus {
+  pending
+  approved
+  rejected
+}
+
+enum PaymentStatus {
+  pending
+  confirmed
+  rejected
+}
+
+enum LedgerEntryType {
+  COMMITMENT
+  SLOT_CREDIT
+  SLOT_REVERSAL
+  PAYMENT
+  ADJUSTMENT
+}
+
+enum FundEntryType {
+  PENALTY_ASSESSED
+  PENALTY_ADJUSTED
+  PAYMENT_RECEIVED
+  WAIVER
+  EXPENSE
+}
+
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  name         String
+  passwordHash String
+  avatarColor  String     @default("violet")
+  role         SystemRole @default(user)
+  active       Boolean    @default(true)
+  authVersion  Int        @default(1)
+  lastLoginAt  DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  sessions       Session[]
+  passwordResets PasswordReset[]
+  members        Member[]
+  notifications  Notification[]
+
+  @@map("users")
+}
+
+model Session {
+  id          String    @id @default(cuid())
+  tokenHash   String    @unique
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  authVersion Int
+  client      String    @default("web")
+  ip          String?
+  userAgent   String?
+  createdAt   DateTime  @default(now())
+  lastSeenAt  DateTime  @default(now())
+  expiresAt   DateTime
+  revokedAt   DateTime?
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model PasswordReset {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@map("password_resets")
+}
+
+model Group {
+  id              String    @id @default(cuid())
+  name            String
+  emoji           String    @default("🔥")
+  color           String    @default("violet")
+  description     String    @default("")
+  timezone        String    @default("America/Sao_Paulo")
+  currency        String    @default("BRL")
+  closeGraceHours Int       @default(12)
+  /// Monday of the first charged week.
+  startsOn        DateTime  @db.Date
+  destLabel       String    @default("Caixa do grupo")
+  destHolderName  String    @default("")
+  destPixKeyType  String?
+  destPixKey      String    @default("")
+  destBankInfo    String    @default("")
+  destCity        String    @default("")
+  createdById     String
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  archivedAt      DateTime?
+
+  members      Member[]
+  goals        Goal[]
+  weeks        Week[]
+  checkIns     CheckIn[]
+  invites      Invite[]
+  joinRequests JoinRequest[]
+  ledger       LedgerEntry[]
+  fund         FundEntry[]
+  payments     Payment[]
+  uploads      Upload[]
+  feed         FeedEvent[]
+  contests     Contest[]
+
+  @@map("groups")
+}
+
+model Member {
+  id            String       @id @default(cuid())
+  groupId       String
+  group         Group        @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role          GroupRole    @default(member)
+  status        MemberStatus @default(active)
+  joinedAt      DateTime     @default(now())
+  /// Monday of the first week this member is charged.
+  startsOnWeek  DateTime     @db.Date
+  /// Last charged week (Monday) when leaving/removed.
+  endsAfterWeek DateTime?    @db.Date
+  streak        Int          @default(0)
+
+  memberWeeks MemberWeek[]
+  checkIns    CheckIn[]
+  ledger      LedgerEntry[]
+  payments    Payment[]
+
+  @@unique([groupId, userId])
+  @@index([userId])
+  @@map("members")
+}
+
+model Goal {
+  id                String     @id @default(cuid())
+  groupId           String
+  group             Group      @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  name              String
+  emoji             String     @default("🎯")
+  period            GoalPeriod
+  target            Int
+  unit              String
+  slotsPerWeek      Int
+  stakeCents        Int
+  activeWeekdays    Int[]
+  excludedMemberIds String[]   @default([])
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  archivedAt        DateTime?
+
+  checkIns  CheckIn[]
+  weekGoals WeekGoal[]
+
+  @@index([groupId])
+  @@map("goals")
+}
+
+model Week {
+  id        String     @id @default(cuid())
+  groupId   String
+  group     Group      @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  weekStart DateTime   @db.Date
+  status    WeekStatus @default(open)
+  openedAt  DateTime   @default(now())
+  closesAt  DateTime
+  closedAt  DateTime?
+
+  memberWeeks MemberWeek[]
+  checkIns    CheckIn[]
+
+  @@unique([groupId, weekStart])
+  @@index([status, closesAt])
+  @@map("weeks")
+}
+
+model MemberWeek {
+  id              String   @id @default(cuid())
+  weekId          String
+  week            Week     @relation(fields: [weekId], references: [id], onDelete: Cascade)
+  memberId        String
+  member          Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  commitmentCents Int
+  creditedCents   Int      @default(0)
+  penaltyCents    Int?
+  allMet          Boolean?
+  createdAt       DateTime @default(now())
+
+  goals WeekGoal[]
+
+  @@unique([weekId, memberId])
+  @@map("member_weeks")
+}
+
+/// Snapshot of a goal for one member in one week (goal edits never change an opened week).
+model WeekGoal {
+  id             String     @id @default(cuid())
+  memberWeekId   String
+  memberWeek     MemberWeek @relation(fields: [memberWeekId], references: [id], onDelete: Cascade)
+  goalId         String
+  goal           Goal       @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  name           String
+  emoji          String
+  period         GoalPeriod
+  target         Int
+  unit           String
+  slotsPerWeek   Int
+  stakeCents     Int
+  activeWeekdays Int[]
+  slotsAchieved  Int        @default(0)
+  creditedCents  Int        @default(0)
+
+  checkIns CheckIn[]
+  ledger   LedgerEntry[]
+
+  @@unique([memberWeekId, goalId])
+  @@map("week_goals")
+}
+
+model CheckIn {
+  id            String        @id @default(cuid())
+  groupId       String
+  group         Group         @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  memberId      String
+  member        Member        @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  goalId        String
+  goal          Goal          @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  weekId        String?
+  week          Week?         @relation(fields: [weekId], references: [id], onDelete: SetNull)
+  weekGoalId    String?
+  weekGoal      WeekGoal?     @relation(fields: [weekGoalId], references: [id], onDelete: SetNull)
+  date          DateTime      @db.Date
+  quantity      Int
+  note          String        @default("")
+  photoUploadId String?
+  status        CheckInStatus @default(valid)
+  createdAt     DateTime      @default(now())
+  deletedAt     DateTime?
+
+  reactions Reaction[]
+  contests  Contest[]
+
+  @@index([groupId, createdAt])
+  @@index([weekGoalId])
+  @@map("check_ins")
+}
+
+model Reaction {
+  id        String   @id @default(cuid())
+  checkInId String
+  checkIn   CheckIn  @relation(fields: [checkInId], references: [id], onDelete: Cascade)
+  memberId  String
+  emoji     String
+  createdAt DateTime @default(now())
+
+  @@unique([checkInId, memberId, emoji])
+  @@map("reactions")
+}
+
+model Contest {
+  id               String        @id @default(cuid())
+  groupId          String
+  group            Group         @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  checkInId        String
+  checkIn          CheckIn       @relation(fields: [checkInId], references: [id], onDelete: Cascade)
+  openedByMemberId String
+  reason           String
+  status           ContestStatus @default(open)
+  resolutionNote   String        @default("")
+  resolvedById     String?
+  createdAt        DateTime      @default(now())
+  resolvedAt       DateTime?
+
+  @@index([groupId, status])
+  @@map("contests")
+}
+
+model Invite {
+  id          String     @id @default(cuid())
+  groupId     String
+  group       Group      @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  kind        InviteKind
+  email       String?
+  token       String     @unique
+  createdById String
+  expiresAt   DateTime
+  maxUses     Int?
+  uses        Int        @default(0)
+  revokedAt   DateTime?
+  createdAt   DateTime   @default(now())
+
+  @@index([groupId])
+  @@map("invites")
+}
+
+model JoinRequest {
+  id          String            @id @default(cuid())
+  groupId     String
+  group       Group             @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId      String
+  inviteId    String?
+  status      JoinRequestStatus @default(pending)
+  decidedById String?
+  decidedAt   DateTime?
+  createdAt   DateTime          @default(now())
+
+  @@index([groupId, status])
+  @@map("join_requests")
+}
+
+/// Member account: balance = sum(amountCents). Immutable.
+model LedgerEntry {
+  id          String          @id @default(cuid())
+  groupId     String
+  group       Group           @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  memberId    String
+  member      Member          @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  type        LedgerEntryType
+  amountCents Int
+  weekId      String?
+  weekGoalId  String?
+  weekGoal    WeekGoal?       @relation(fields: [weekGoalId], references: [id], onDelete: SetNull)
+  checkInId   String?
+  paymentId   String?
+  description String
+  createdById String?
+  createdAt   DateTime        @default(now())
+
+  @@index([groupId, memberId, createdAt])
+  @@index([weekId])
+  @@map("ledger_entries")
+}
+
+/// Group fund: receivable = sum(receivableDeltaCents), cash = sum(cashDeltaCents). Immutable.
+model FundEntry {
+  id                   String        @id @default(cuid())
+  groupId              String
+  group                Group         @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  type                 FundEntryType
+  receivableDeltaCents Int           @default(0)
+  cashDeltaCents       Int           @default(0)
+  memberId             String?
+  weekId               String?
+  paymentId            String?
+  description          String
+  receiptUploadId      String?
+  createdById          String?
+  createdAt            DateTime      @default(now())
+
+  @@index([groupId, createdAt])
+  @@map("fund_entries")
+}
+
+model Payment {
+  id              String        @id @default(cuid())
+  groupId         String
+  group           Group         @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  memberId        String
+  member          Member        @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  amountCents     Int
+  status          PaymentStatus @default(pending)
+  note            String        @default("")
+  receiptUploadId String?
+  declaredAt      DateTime      @default(now())
+  declaredById    String
+  decidedById     String?
+  decidedAt       DateTime?
+
+  @@index([groupId, status])
+  @@map("payments")
+}
+
+model Upload {
+  id         String   @id @default(cuid())
+  groupId    String
+  group      Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  uploadedBy String
+  mime       String
+  size       Int
+  path       String
+  createdAt  DateTime @default(now())
+
+  @@map("uploads")
+}
+
+model FeedEvent {
+  id            String   @id @default(cuid())
+  groupId       String
+  group         Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  type          String
+  actorMemberId String?
+  checkInId     String?
+  text          String
+  createdAt     DateTime @default(now())
+
+  @@index([groupId, createdAt])
+  @@map("feed_events")
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  groupId   String?
+  type      String
+  title     String
+  body      String    @default("")
+  link      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, createdAt])
+  @@map("notifications")
+}

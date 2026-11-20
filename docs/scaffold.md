@@ -1,0 +1,54 @@
+# Tenace — Execution order
+
+> Each phase = 1 agent session = 1 PR. Do not move on before "✅ Done when" is green.
+> Phases 0–8 and 11–12 were delivered together in v0.1 (2026-11-20), at the owner's request.
+
+## Phase 0 — Repository foundation (`vg-arquitetura-base`) ✅
+pnpm workspaces, Turborepo, `packages/config`, `AGENTS.md`/`CLAUDE.md`, `docs/spec.md`.
+✅ `pnpm install` clean; `pnpm typecheck` passes.
+
+## Phase 1 — Base packages ✅
+`packages/types` (errors, auth, group roles → permissions, DTOs) and `packages/rules`
+(dates/weeks per time zone, slots, commitment, PIX BR Code).
+✅ `pnpm --filter @tenace/rules test` green (16 tests).
+
+## Phase 2 — Local infra ✅
+`compose.yaml` (postgres, redis), `.env.example`, `pnpm setup`, `pnpm infra:up`.
+
+## Phase 3 — Backend base ✅
+NestJS in `apps/api`, Zod env, Prisma schema + initial migration, `/health`, `/ready`,
+global error filter with stable codes.
+
+## Phase 4 — Isolation by group membership ✅ (replaces multi-tenancy)
+`GroupGuard` (404 for non-members), `@NeedGroup(permission)`.
+✅ Sacred test: non-member gets 404 on every `/groups/:id/**` route.
+
+## Phase 5 — Auth + group permissions (`vg-auth`, `vg-rbac` adapted) ✅
+Sign-up, login (rate limited), logout, password change/reset, opaque sessions (cookie/Bearer).
+✅ Integration tests: CSRF, Bearer, member vs admin permissions.
+
+## Phase 7 — Web base (`vg-interface`, `vg-navegacao` simplified) ✅
+Tokens light/dark, shell (sidebar desktop, bottom nav + FAB on phones), auth screens.
+✅ No horizontal overflow at 375 px; both themes.
+
+## Phase 8 — Domain modules ✅
+Groups/members/invites · goals · weeks engine · check-ins/feed/contests · ledgers/payments/PIX ·
+notifications. ✅ `pnpm --filter @tenace/api test` green (11 integration tests).
+
+## Phase 9 — Observability + audit ⏳
+Structured logs (pino), Sentry, audit log for admin actions.
+
+## Phase 10 — Tests ⏳
+Playwright E2E of the main journey at 375 px and desktop; CI gate.
+
+## Phase 10b — Mobile app (`vg-mobile`) ⏳
+Expo + expo-router; extract `packages/api-client` and `packages/ui` tokens; Bearer sessions;
+push notifications (week reminders, payment confirmed).
+✅ App logs in against the same API and passes pure-logic tests.
+
+## Phase 11 — CI (`vg-deploy`) ⏳
+GitHub Actions: typecheck → test (Postgres/Redis services) → build.
+
+## Phase 12 — Production (`vg-deploy`) ✅
+Dockerfiles, `infra/compose/compose.prod.yaml`, host nginx + certbot, `deploy.sh`,
+backup before migration. ✅ `https://tenace.amancio.family` with valid TLS.
