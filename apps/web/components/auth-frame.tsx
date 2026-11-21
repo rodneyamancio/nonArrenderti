@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { TenaceLogo } from '@/components/brand';
+import { ThemeToggle } from '@/components/theme-toggle';
 
 /** Split layout for auth screens: brand panel on desktop, compact on phones. */
 export function AuthFrame({ title, subtitle, children, footer }: { title: string; subtitle?: string; children: React.ReactNode; footer?: React.ReactNode }) {
@@ -17,7 +18,8 @@ export function AuthFrame({ title, subtitle, children, footer }: { title: string
         </div>
         <p className="relative text-sm font-medium text-white/70">non arrenderti — não desista 💜</p>
       </section>
-      <section className="flex items-center justify-center px-4 py-10">
+      <section className="relative flex items-center justify-center px-4 py-10">
+        <ThemeToggle className="absolute top-4 right-4" />
         <div className="w-full max-w-sm">
           <Link href="/" className="mb-8 inline-block lg:hidden">
             <TenaceLogo tagline />

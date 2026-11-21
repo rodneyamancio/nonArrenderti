@@ -312,6 +312,10 @@ notifications (need the Expo/EAS project — §8.9).
 Bottom navigation on mobile (Início · Avisos · Registrar · Grupos · Perfil),
 sidebar on desktop (`vg-navegacao`, simplified: no ⌘K in v1).
 
+Theme: a one-tap light/dark switch (moon/sun) sits in the phone header next to Avisos, above
+the profile in the desktop sidebar, on the landing header and on the auth screens — and on
+the app's Início and auth screens. Perfil › Aparência keeps Claro / Escuro / Sistema.
+
 ### 8.9 Mobile app (`apps/mobile`, `vg-mobile`)
 
 Same screens and labels as the portal on phones: Início, Avisos, Grupos, Perfil, the

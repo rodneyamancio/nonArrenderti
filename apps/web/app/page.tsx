@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { TenaceLogo, TenaceMark } from '@/components/brand';
 
 export default function Landing() {
@@ -6,11 +7,13 @@ export default function Landing() {
     <div className="min-h-dvh overflow-x-hidden">
       <header className="mx-auto flex max-w-6xl items-center justify-between px-4 py-5 sm:px-6">
         <TenaceLogo />
-        <nav className="flex items-center gap-2">
-          <Link href="/entrar" className="rounded-md px-3 py-2 text-sm font-semibold hover:bg-accent">
+        <nav className="flex items-center gap-1 sm:gap-2">
+          <ThemeToggle />
+          {/* Phones: "Já tenho conta" is right below in the hero; the header keeps the theme switch. */}
+          <Link href="/entrar" className="hidden rounded-md px-3 py-2 text-sm font-semibold whitespace-nowrap hover:bg-accent sm:inline-block">
             Entrar
           </Link>
-          <Link href="/criar-conta" className="rounded-md bg-primary px-4 py-2 text-sm font-bold text-primary-foreground shadow-xs hover:bg-primary-hover">
+          <Link href="/criar-conta" className="rounded-md bg-primary px-4 py-2 text-sm font-bold whitespace-nowrap text-primary-foreground shadow-xs hover:bg-primary-hover">
             Criar conta
           </Link>
         </nav>

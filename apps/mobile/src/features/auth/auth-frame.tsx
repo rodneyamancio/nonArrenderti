@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TenaceLogo } from '@/ui/brand';
 import { T } from '@/ui/kit';
 import { useTheme } from '@/ui/theme-provider';
+import { ThemeToggle } from '@/ui/theme-toggle';
 
 export function AuthFrame({ title, subtitle, children, footer }: { title: string; subtitle?: string; children: ReactNode; footer?: ReactNode }) {
   const { c } = useTheme();
@@ -25,6 +26,7 @@ export function AuthFrame({ title, subtitle, children, footer }: { title: string
         </View>
         {footer && <View style={{ flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap', gap: 4 }}>{footer}</View>}
       </ScrollView>
+      <ThemeToggle style={{ position: 'absolute', top: insets.top + 6, right: 12 }} />
     </KeyboardAvoidingView>
   );
 }

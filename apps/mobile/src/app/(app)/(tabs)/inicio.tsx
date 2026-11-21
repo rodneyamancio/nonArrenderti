@@ -10,6 +10,7 @@ import { useUser } from '@/session/provider';
 import { TenaceMark } from '@/ui/brand';
 import { Button, Card, ErrorState, Input, Loading, Overline, Screen, T, ToneBox } from '@/ui/kit';
 import { TopBar } from '@/ui/page-header';
+import { ThemeToggle } from '@/ui/theme-toggle';
 import { useTheme } from '@/ui/theme-provider';
 
 export default function HomeScreen() {
@@ -30,6 +31,7 @@ export default function HomeScreen() {
         <T size={20} weight="extrabold" style={{ flex: 1, letterSpacing: -0.6 }}>
           tenace
         </T>
+        <ThemeToggle />
         <Pressable onPress={() => router.push('/avisos')} accessibilityRole="button" accessibilityLabel={`Avisos${unread ? ` (${unread} novos)` : ''}`} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
           <Bell size={22} color={c.text} />
           {!!unread && <View style={{ position: 'absolute', top: 9, right: 10, width: 10, height: 10, borderRadius: 5, backgroundColor: c.sparkSolid, borderWidth: 2, borderColor: c.bg }} />}

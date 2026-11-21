@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { TenaceLogo, TenaceMark } from '@/components/brand';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { Avatar, Spinner, toneClass } from '@/components/ui';
 import { api } from '@/lib/api';
 import { cx } from '@/lib/format';
@@ -116,6 +117,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </li>
             </ul>
           </div>
+          <ThemeToggle withLabel className="self-start" />
           <Link href="/perfil" className="flex items-center gap-3 rounded-md px-2 py-2 hover:bg-accent">
             <Avatar name={user.name} color={user.avatarColor} />
             <span className="min-w-0">
@@ -132,10 +134,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <TenaceMark className="h-8 w-8" />
               <span className="text-lg font-extrabold tracking-[-0.04em]">tenace</span>
             </Link>
-            <Link href="/notificacoes" className="relative flex h-10 w-10 items-center justify-center rounded-full hover:bg-accent" aria-label={`Avisos${unread ? ` (${unread} novos)` : ''}`}>
-              <Bell className="h-5 w-5" aria-hidden />
-              {!!unread && <span className="absolute top-1.5 right-1.5 h-2.5 w-2.5 rounded-full bg-spark-solid ring-2 ring-[var(--ui-bg)]" />}
-            </Link>
+            <div className="flex items-center gap-1">
+              <ThemeToggle />
+              <Link href="/notificacoes" className="relative flex h-10 w-10 items-center justify-center rounded-full hover:bg-accent" aria-label={`Avisos${unread ? ` (${unread} novos)` : ''}`}>
+                <Bell className="h-5 w-5" aria-hidden />
+                {!!unread && <span className="absolute top-1.5 right-1.5 h-2.5 w-2.5 rounded-full bg-spark-solid ring-2 ring-[var(--ui-bg)]" />}
+              </Link>
+            </div>
           </header>
 
           <main id="main" className="mx-auto w-full max-w-5xl px-4 pt-5 pb-28 sm:px-6 lg:px-10 lg:pt-8 lg:pb-12">
