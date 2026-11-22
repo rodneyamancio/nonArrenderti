@@ -59,6 +59,12 @@ export interface CreateSubscriptionInput {
   callbackUrl?: string;
 }
 
+export interface CostCenter {
+  id: string;
+  name: string;
+  active: boolean;
+}
+
 export interface SubscriptionInfo {
   id: string;
   status: string; // active | paused | cancelled
@@ -89,6 +95,7 @@ export interface PaymentProvider {
   getSubscription(id: string): Promise<SubscriptionInfo>;
   listCycles(subscriptionId: string): Promise<SubscriptionCycle[]>;
   cancelSubscription(id: string): Promise<void>;
+  listCostCenters(): Promise<CostCenter[]>;
   ping(): Promise<{ mode: 'test' | 'live' }>;
 }
 
@@ -138,6 +145,8 @@ export class CalebePayProvider implements PaymentProvider {
   constructor(
     apiUrl: string,
     private readonly apiKey: string,
+    /** Every charge Tenace creates is classified in this Calebe Pay cost center (optional). */
+    private readonly costCenterId = '',
   ) {
     this.base = apiUrl.replace(/\/+$/, '');
     this.testMode = CalebePayProvider.isTestKey(apiKey);
@@ -202,6 +211,7 @@ export class CalebePayProvider implements PaymentProvider {
       },
       ...(input.returnUrl?.startsWith('https://') ? { return_url: input.returnUrl } : {}),
       ...(input.callbackUrl?.startsWith('https://') ? { callback_url: input.callbackUrl } : {}),
+      ...(this.costCenterId ? { cost_center_id: this.costCenterId } : {}),
     };
   }
 
@@ -238,6 +248,7 @@ export class CalebePayProvider implements PaymentProvider {
       advance_days: input.advanceDays,
       customer: this.customerBody(input.customer),
       ...(input.callbackUrl?.startsWith('https://') ? { callback_url: input.callbackUrl } : {}),
+      ...(this.costCenterId ? { cost_center_id: this.costCenterId } : {}),
     };
     const { data } = await fetchJson<Envelope<CpSubscription>>(`${this.base}/v1/subscriptions`, {
       method: 'POST',
@@ -260,6 +271,12 @@ export class CalebePayProvider implements PaymentProvider {
 
   async cancelSubscription(id: string): Promise<void> {
     await fetchJson(`${this.base}/v1/subscriptions/${encodeURIComponent(id)}`, { method: 'PATCH', headers: this.headers(), body: JSON.stringify({ status: 'cancelled' }), timeoutMs: 15_000 });
+  }
+
+  /** Active cost centers of the key's tenant (needs `transactions:read`). */
+  async listCostCenters(): Promise<CostCenter[]> {
+    const { data } = await fetchJson<Envelope<{ id: string; name: string; active: boolean }[]>>(`${this.base}/v1/cost-centers?active=true`, { headers: this.headers(), timeoutMs: 15_000 });
+    return (data.data ?? []).map((c) => ({ id: c.id, name: c.name, active: c.active }));
   }
 
   private static subscription(s: CpSubscription): SubscriptionInfo {

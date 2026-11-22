@@ -143,6 +143,18 @@ export class AdminController {
     return view;
   }
 
+  /** Cost centers available for the saved Calebe Pay key (to pick where Tenace charges land). */
+  @Get('integrations/calebepay/cost-centers')
+  async costCenters() {
+    const cp = await this.integrations.load('calebepay');
+    if (!cp.secrets.apiKey) throw new DomainBadRequest('validation_error', 'Salve a chave de API do Calebe Pay primeiro');
+    try {
+      return { costCenters: await new CalebePayProvider(cp.config.apiUrl, cp.secrets.apiKey).listCostCenters() };
+    } catch (e) {
+      throw new DomainBadRequest('billing_unavailable', `Não foi possível listar os centros de custo: ${(e as Error).message.slice(0, 200)}`);
+    }
+  }
+
   @Post('integrations/:key/test')
   @HttpCode(200)
   async testIntegration(@Req() req: AuthedRequest, @Param('key') key: string, @Body() body: unknown) {

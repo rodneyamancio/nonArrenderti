@@ -33,6 +33,13 @@ export const INTEGRATIONS = {
   calebepay: {
     config: z.object({
       apiUrl: url.default('https://api.calebepay.com.br'),
+      /** Calebe Pay cost center for every charge Tenace creates ('' = none). */
+      costCenterId: z
+        .string()
+        .trim()
+        .max(64)
+        .refine((v) => v === '' || /^cc_[A-Za-z0-9_-]+$/.test(v), 'Centro de custo inválido (cc_…)')
+        .default(''),
     }),
     secretKeys: ['apiKey', 'webhookSecret'] as const,
   },

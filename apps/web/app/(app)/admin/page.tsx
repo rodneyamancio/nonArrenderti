@@ -239,11 +239,19 @@ function Integrations() {
       <IntegrationCard
         item={cp}
         title="Pagamentos · Calebe Pay"
-        description="Conexão pronta para cobranças reais no futuro (venda de licença, PIX automático das multas). Hoje nenhum fluxo cobra pelo Calebe Pay."
+        description="Cobra as assinaturas dos planos (Pix ou boleto todo mês; cartão e atrasos pelo checkout). Sem ela, só o plano grátis fica disponível."
         status={cp.enabled && cp.secrets.apiKey?.set ? (cp.secrets.apiKey.hint.startsWith('cp_test_') ? 'Conectado · modo teste' : 'Conectado · produção') : 'Não conectado'}
-        fields={[{ key: 'apiUrl', label: 'URL da API', placeholder: 'https://api.calebepay.com.br' }]}
+        fields={[
+          { key: 'apiUrl', label: 'URL da API', placeholder: 'https://api.calebepay.com.br' },
+          {
+            key: 'costCenterId',
+            label: 'Centro de custo',
+            hint: 'Todas as cobranças do Tenace (assinaturas e pagamentos de mensalidade) entram neste centro de custo da Calebe Pay.',
+            render: (value, onChange) => <CostCenterPicker value={value} onChange={onChange} />,
+          },
+        ]}
         secretFields={[
-          { key: 'apiKey', label: 'Chave de API', placeholder: 'cp_test_… ou cp_live_…', hint: 'Escopos: transactions:read, pix:write (e boleto/cartão se for usar).' },
+          { key: 'apiKey', label: 'Chave de API', placeholder: 'cp_test_… ou cp_live_…', hint: 'Escopos: transactions:read, pix:write, boleto:write e credit_card:write (cartão no checkout).' },
           { key: 'webhookSecret', label: 'Segredo de assinatura do webhook', placeholder: 'whsec_…' },
         ]}
         test="ping"
@@ -277,7 +285,7 @@ function IntegrationCard({
   title: string;
   description: string;
   status: string;
-  fields: { key: string; label: string; placeholder?: string; hint?: string }[];
+  fields: { key: string; label: string; placeholder?: string; hint?: string; render?: (value: string, onChange: (v: string) => void) => React.ReactNode }[];
   secretFields: { key: string; label: string; placeholder?: string; hint?: string }[];
   test: 'email' | 'ping';
   extra?: React.ReactNode;
@@ -337,7 +345,11 @@ function IntegrationCard({
         <Switch checked={enabled} onChange={setEnabled} label="Ativa" description="Desligada, a integração não é usada mesmo com as chaves salvas." />
         {fields.map((f) => (
           <Field key={f.key} label={f.label} htmlFor={`${item.key}-${f.key}`} hint={f.hint}>
-            <Input id={`${item.key}-${f.key}`} placeholder={f.placeholder} value={config[f.key] ?? ''} onChange={(e) => setConfig({ ...config, [f.key]: e.target.value })} />
+            {f.render ? (
+              f.render(config[f.key] ?? '', (v) => setConfig({ ...config, [f.key]: v }))
+            ) : (
+              <Input id={`${item.key}-${f.key}`} placeholder={f.placeholder} value={config[f.key] ?? ''} onChange={(e) => setConfig({ ...config, [f.key]: e.target.value })} />
+            )}
           </Field>
         ))}
         {secretFields.map((f) => {
@@ -410,6 +422,53 @@ function System() {
         )}
       </Card>
       <p className="text-xs text-muted-foreground">Build {data.build.slice(0, 12)}</p>
+    </div>
+  );
+}
+
+/** Cost centers come from Calebe Pay (GET /v1/cost-centers with the saved key); a typed id also works. */
+function CostCenterPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [list, setList] = useState<{ id: string; name: string }[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+  async function load() {
+    setLoading(true);
+    setErr('');
+    try {
+      setList((await api<{ costCenters: { id: string; name: string }[] }>('/admin/integrations/calebepay/cost-centers')).costCenters);
+    } catch (e) {
+      setErr(errorMessage(e));
+    } finally {
+      setLoading(false);
+    }
+  }
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex gap-2">
+        {list ? (
+          <select
+            id="calebepay-costCenterId"
+            className="h-11 w-full rounded-md border border-input bg-card px-3 text-sm"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+          >
+            <option value="">Nenhum (sem classificação)</option>
+            {!list.some((c) => c.id === value) && value && <option value={value}>{value}</option>}
+            {list.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name} · {c.id}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <Input id="calebepay-costCenterId" placeholder="cc_…" value={value} onChange={(e) => onChange(e.target.value.trim())} />
+        )}
+        <Button type="button" variant="outline" onClick={load} loading={loading}>
+          {list ? 'Atualizar' : 'Buscar na Calebe'}
+        </Button>
+      </div>
+      {err && <p className="text-xs text-danger">{err}</p>}
+      {list && list.length === 0 && <p className="text-xs text-muted-foreground">Nenhum centro de custo ativo nesta conta.</p>}
     </div>
   );
 }

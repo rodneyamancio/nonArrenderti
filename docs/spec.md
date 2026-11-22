@@ -362,6 +362,10 @@ see §17).
   week opens and an open week closes **voided** (compensating `ADJUSTMENT`, no penalty, streaks
   untouched). Paying unblocks at once; the week opened before the block keeps running,
   otherwise the group resumes the next Monday (`resumesOnWeek`).
+- **Cost center:** every charge Tenace creates (subscriptions and invoice checkouts) carries
+  the Calebe Pay `cost_center_id` set in Admin › Integrações › Calebe Pay (picked from
+  `GET /v1/cost-centers` or typed; empty = no classification). Changing it affects new
+  subscriptions and checkouts only (Calebe fixes it per subscription).
 - **Sync:** Calebe Pay webhooks (`subscription.cycle_created`, `transaction.*`) plus a pull
   every 10 min and when the person opens the Assinatura page, so it works even without
   webhooks configured. Status is cached on `subscriptions.status` for the guards.

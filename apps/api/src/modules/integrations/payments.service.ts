@@ -41,7 +41,7 @@ export class PaymentsService {
     if (this.override) return this.override;
     const cp = await this.integrations.load('calebepay');
     if (!cp.enabled || !cp.secrets.apiKey) throw new DomainUnavailable('service_unavailable', 'Calebe Pay não configurado');
-    return new CalebePayProvider(cp.config.apiUrl, cp.secrets.apiKey);
+    return new CalebePayProvider(cp.config.apiUrl, cp.secrets.apiKey, cp.config.costCenterId);
   }
 
   /**

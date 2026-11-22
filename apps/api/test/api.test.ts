@@ -309,6 +309,9 @@ describe('plans, subscriptions and the block (Calebe Pay faked)', () => {
         return [{ cycle: 0, dueDate: fake.cycleDue ?? c.firstDueDate, amountCents: c.amountCents, status: 'created', transactionId: null, transactionStatus: null, paymentUrl: `https://pay.test/cycle/${id}` }];
       },
       async cancelSubscription() {},
+      async listCostCenters() {
+        return [{ id: 'cc_tenace', name: 'Tenace', active: true }];
+      },
       async ping() {
         return { mode: 'test' as const };
       },
@@ -412,6 +415,18 @@ describe('plans, subscriptions and the block (Calebe Pay faked)', () => {
     expect(net).toBe(0); // COMMITMENT − … + ADJUSTMENT = 0: nobody owes this week
     expect(await prisma().fundEntry.count({ where: { weekId } })).toBe(0);
     await prisma().group.update({ where: { id: groupId }, data: { billingPausedAt: null } });
+  });
+
+  it('charges carry the configured Calebe Pay cost center', async () => {
+    const { CalebePayProvider } = nodeRequire(DIST + 'modules/integrations/calebepay.provider.js') as typeof import('../src/modules/integrations/calebepay.provider');
+    const customer = { name: 'Ana', document: '52998224725', email: 'ana@test.dev', phone: '11999998888' };
+    const input = { reference: 'tinv-x', idempotencyKey: 'k', amountCents: 990, description: 'x', methods: ['pix' as const], dueDate: today, customer };
+    expect(new CalebePayProvider('https://api.test', 'cp_test_x', 'cc_f215b67862fb6aa5ab69cdbf22f5af1a').buildBody(input)).toMatchObject({ cost_center_id: 'cc_f215b67862fb6aa5ab69cdbf22f5af1a' });
+    expect(new CalebePayProvider('https://api.test', 'cp_test_x').buildBody(input)).not.toHaveProperty('cost_center_id');
+    const bad = await boss.req('PUT', '/admin/integrations/calebepay', { enabled: true, config: { costCenterId: 'nao-e-centro' } });
+    expect(bad.status).toBe(400);
+    const ok = await boss.req('PUT', '/admin/integrations/calebepay', { enabled: true, config: { costCenterId: 'cc_f215b67862fb6aa5ab69cdbf22f5af1a' } });
+    expect(ok.data.config.costCenterId).toBe('cc_f215b67862fb6aa5ab69cdbf22f5af1a');
   });
 
   it('switching back to the free plan is refused while usage does not fit', async () => {
