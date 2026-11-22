@@ -1,15 +1,37 @@
 {
-  "name": "Tenace — non arrenderti",
+  "id": "/",
+  "name": "Tenace — metas semanais em grupo",
   "short_name": "Tenace",
-  "description": "Metas semanais com um empurrãozinho do grupo.",
+  "description": "Metas semanais com um empurrãozinho do grupo: cada meta cumprida paga uma cota.",
   "start_url": "/inicio",
+  "scope": "/",
   "display": "standalone",
+  "orientation": "portrait",
   "background_color": "#f6f4fb",
   "theme_color": "#6d3bff",
   "lang": "pt-BR",
+  "dir": "ltr",
+  "categories": [
+    "lifestyle",
+    "health",
+    "productivity"
+  ],
   "icons": [
-    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" },
-    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
   ]
 }

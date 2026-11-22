@@ -1,13 +1,41 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { TenaceLogo, TenaceMark } from '@/components/brand';
+import { FAQ, SITE } from '@/lib/site';
+
+export const metadata: Metadata = { alternates: { canonical: '/' } };
+
+/** Structured data for search engines: who we are, what the app is, and the FAQ. */
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    { '@type': 'Organization', '@id': `${SITE.url}/#org`, name: SITE.name, url: SITE.url, logo: `${SITE.url}/icon-512.png`, slogan: SITE.tagline },
+    { '@type': 'WebSite', '@id': `${SITE.url}/#site`, name: SITE.name, url: SITE.url, inLanguage: 'pt-BR', publisher: { '@id': `${SITE.url}/#org` } },
+    {
+      '@type': 'SoftwareApplication',
+      name: SITE.name,
+      url: SITE.url,
+      description: SITE.description,
+      applicationCategory: 'LifestyleApplication',
+      operatingSystem: 'Web, iOS, Android',
+      inLanguage: 'pt-BR',
+      offers: { '@type': 'Offer', price: '0', priceCurrency: 'BRL', description: 'Plano grátis para começar' },
+      publisher: { '@id': `${SITE.url}/#org` },
+    },
+    { '@type': 'FAQPage', mainEntity: FAQ.map((f) => ({ '@type': 'Question', name: f.q, acceptedAnswer: { '@type': 'Answer', text: f.a } })) },
+  ],
+};
 
 export default function Landing() {
   return (
     <div className="min-h-dvh overflow-x-hidden">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, '\\u003c') }} />
       <header className="mx-auto flex max-w-6xl items-center justify-between px-4 py-5 sm:px-6">
-        <TenaceLogo />
-        <nav className="flex items-center gap-1 sm:gap-2">
+        <Link href="/" aria-label="Tenace — página inicial">
+          <TenaceLogo />
+        </Link>
+        <nav aria-label="Conta" className="flex items-center gap-1 sm:gap-2">
           <ThemeToggle />
           {/* Phones: "Já tenho conta" is right below in the hero; the header keeps the theme switch. */}
           <Link href="/entrar" className="hidden rounded-md px-3 py-2 text-sm font-semibold whitespace-nowrap hover:bg-accent sm:inline-block">
@@ -39,10 +67,10 @@ export default function Landing() {
             </div>
           </div>
 
-          <div className="relative mx-auto w-full max-w-sm">
+          <div className="relative mx-auto w-full max-w-sm" role="img" aria-label="Exemplo do Tenace: no grupo Clube do Foco, a semana está em menos 5 reais com 1 cota faltando; academia 3 de 3 e leitura 2 de 3.">
             <div className="absolute -top-8 -right-6 h-40 w-40 rounded-full bg-[#ff7a1a]/25 blur-3xl" aria-hidden />
             <div className="absolute -bottom-10 -left-8 h-48 w-48 rounded-full bg-[#6d3bff]/25 blur-3xl" aria-hidden />
-            <div className="relative overflow-hidden rounded-xl border border-border bg-card shadow-lg">
+            <div className="relative overflow-hidden rounded-xl border border-border bg-card shadow-lg" aria-hidden>
               <div className="tone-violet tone-bg flex items-center gap-3 px-5 py-4">
                 <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/20 text-xl">🔥</span>
                 <div>
@@ -85,8 +113,11 @@ export default function Landing() {
           </div>
         </section>
 
-        <section className="border-y border-border bg-card">
-          <div className="mx-auto grid max-w-6xl gap-8 px-4 py-14 sm:px-6 md:grid-cols-3">
+        <section id="como-funciona" aria-labelledby="como-funciona-titulo" className="border-y border-border bg-card">
+          <h2 id="como-funciona-titulo" className="mx-auto max-w-6xl px-4 pt-14 text-2xl font-extrabold tracking-tight sm:px-6 sm:text-3xl">
+            Como funciona
+          </h2>
+          <div className="mx-auto grid max-w-6xl gap-8 px-4 pt-8 pb-14 sm:px-6 md:grid-cols-3">
             {[
               { n: '1', t: 'Crie o grupo', d: 'Dê um nome, escolha quem participa e para onde vai o dinheiro (a caixinha do churrasco, uma doação…).' },
               { n: '2', t: 'Defina as metas', d: '10 páginas por dia, academia 3× por semana. Cada meta vira cotas com um valor — ex.: R$ 5.' },
@@ -94,14 +125,17 @@ export default function Landing() {
             ].map((s) => (
               <div key={s.n}>
                 <span className="tone-violet tone-bg flex h-10 w-10 items-center justify-center rounded-full text-lg font-extrabold">{s.n}</span>
-                <h2 className="mt-4 text-lg font-extrabold">{s.t}</h2>
+                <h3 className="mt-4 text-lg font-extrabold">{s.t}</h3>
                 <p className="mt-2 text-muted-foreground">{s.d}</p>
               </div>
             ))}
           </div>
         </section>
 
-        <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
+        <section aria-labelledby="recursos-titulo" className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
+          <h2 id="recursos-titulo" className="mb-8 text-2xl font-extrabold tracking-tight sm:text-3xl">
+            Feito para manter o grupo no ritmo
+          </h2>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {[
               { e: '👥', t: 'Vários grupos', d: 'Um com os amigos da academia, outro com o clube do livro.' },
@@ -110,11 +144,45 @@ export default function Landing() {
               { e: '⚖️', t: 'Justo', d: 'Foto opcional e contestação: o grupo decide o que vale.' },
             ].map((f) => (
               <div key={f.t} className="rounded-xl border border-border bg-card p-5 shadow-xs">
-                <span className="text-2xl">{f.e}</span>
+                <span className="text-2xl" aria-hidden>
+                  {f.e}
+                </span>
                 <h3 className="mt-3 font-extrabold">{f.t}</h3>
                 <p className="mt-1 text-sm text-muted-foreground">{f.d}</p>
               </div>
             ))}
+          </div>
+        </section>
+        <section id="perguntas" aria-labelledby="faq-titulo" className="border-t border-border bg-card">
+          <div className="mx-auto max-w-3xl px-4 py-16 sm:px-6">
+            <h2 id="faq-titulo" className="text-2xl font-extrabold tracking-tight sm:text-3xl">
+              Perguntas frequentes
+            </h2>
+            <div className="mt-6 divide-y divide-border rounded-xl border border-border">
+              {FAQ.map((f) => (
+                <details key={f.q} className="group px-5 py-4">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold">
+                    <h3 className="text-base">{f.q}</h3>
+                    <span className="text-xl text-muted-foreground transition-transform group-open:rotate-45" aria-hidden>
+                      +
+                    </span>
+                  </summary>
+                  <p className="mt-3 text-muted-foreground">{f.a}</p>
+                </details>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
+          <div className="tone-violet tone-bg flex flex-col items-start gap-4 rounded-xl p-8 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-2xl font-extrabold">Bora começar a semana no zero?</h2>
+              <p className="mt-1 text-white/85">Crie seu grupo em 2 minutos e convide a turma pelo WhatsApp.</p>
+            </div>
+            <Link href="/criar-conta" className="inline-flex h-12 shrink-0 items-center rounded-md bg-white px-6 font-bold text-[#4a1fd1] shadow-md">
+              Começar grátis
+            </Link>
           </div>
         </section>
       </main>
@@ -124,7 +192,21 @@ export default function Landing() {
           <span className="flex items-center gap-2">
             <TenaceMark className="h-6 w-6" /> Tenace · non arrenderti
           </span>
-          <span>O Tenace só registra os valores — o dinheiro circula por PIX, entre vocês.</span>
+          <nav aria-label="Rodapé" className="flex flex-wrap gap-4">
+            <a href="#como-funciona" className="hover:text-foreground">
+              Como funciona
+            </a>
+            <a href="#perguntas" className="hover:text-foreground">
+              Perguntas
+            </a>
+            <Link href="/entrar" className="hover:text-foreground">
+              Entrar
+            </Link>
+            <Link href="/criar-conta" className="hover:text-foreground">
+              Criar conta
+            </Link>
+          </nav>
+          <span className="w-full sm:w-auto">O Tenace só registra os valores — o dinheiro circula por PIX, entre vocês.</span>
         </div>
       </footer>
     </div>
