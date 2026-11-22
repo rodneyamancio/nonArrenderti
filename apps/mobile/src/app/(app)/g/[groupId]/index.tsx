@@ -1,6 +1,7 @@
 import type { GroupDetail } from '@tenace/types';
 import { router, useLocalSearchParams } from 'expo-router';
-import { ChevronLeft, Plus } from 'lucide-react-native';
+import { ApiError } from '@tenace/api-client';
+import { ChevronLeft, PauseCircle, Plus } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -39,7 +40,23 @@ export default function GroupScreen() {
         <Pressable onPress={back} accessibilityRole="button" accessibilityLabel="Voltar" style={{ width: 48, height: 48, alignItems: 'center', justifyContent: 'center' }}>
           <ChevronLeft size={26} color={c.text} />
         </Pressable>
-        {error ? <ErrorState error={error} onRetry={reload} /> : <Loading />}
+        {error instanceof ApiError && error.code === 'group_blocked' ? (
+          <View style={{ alignItems: 'center', gap: 12, padding: 24, paddingTop: 48 }}>
+            <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: c.warningSoft, alignItems: 'center', justifyContent: 'center' }}>
+              <PauseCircle size={34} color={c.warning} />
+            </View>
+            <T size={22} weight="extrabold" center>
+              Grupo pausado
+            </T>
+            <T tone="muted" center>
+              A assinatura de quem criou o grupo está em atraso. As semanas ficam paradas e ninguém é cobrado até a reativação — você recebe um aviso quando voltar.
+            </T>
+          </View>
+        ) : error ? (
+          <ErrorState error={error} onRetry={reload} />
+        ) : (
+          <Loading />
+        )}
       </View>
     );
   }

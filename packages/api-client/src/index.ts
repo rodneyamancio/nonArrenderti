@@ -34,6 +34,7 @@ export const ERROR_MESSAGES: Partial<Record<ErrorCode | string, string>> = {
   csrf_rejected: 'Requisição recusada. Recarregue a página.',
   internal_error: 'Algo deu errado do nosso lado. Tente de novo.',
   group_not_found: 'Grupo não encontrado — ou você não faz parte dele.',
+  billing_unavailable: 'Pagamentos indisponíveis no momento. Tente de novo em instantes.',
 };
 
 export function errorMessage(e: unknown): string {
@@ -64,6 +65,8 @@ export interface TransportOptions {
   credentials?: 'same-origin' | 'omit' | 'include';
   /** Called on 401 before the error is thrown. */
   onUnauthorized?: (path: string) => void;
+  /** Called on every API error (status + stable code) before it is thrown. */
+  onError?: (status: number, code: string, path: string) => void;
   timeoutMs?: number;
   fetch?: typeof fetch;
 }
@@ -126,8 +129,10 @@ export function createTransport(opts: TransportOptions): Request {
     if (!res.ok) {
       const b = (data ?? {}) as { code?: string; message?: string | string[]; params?: Record<string, unknown> };
       const message = Array.isArray(b.message) ? b.message.join(', ') : (b.message ?? res.statusText);
+      const code = b.code ?? 'internal_error';
       if (res.status === 401) opts.onUnauthorized?.(path);
-      throw new ApiError(res.status, b.code ?? 'internal_error', message, b.params);
+      opts.onError?.(res.status, code, path);
+      throw new ApiError(res.status, code, message, b.params);
     }
     return data as T;
   };

@@ -11,6 +11,7 @@ import { PrismaService } from '../../common/prisma.service';
 import { fromDbDate, iso, toDbDate, type AuthedRequest } from '../../common/request';
 import { parseBody } from '../../common/validation';
 import { OptionalAuth } from '../auth/auth.guard';
+import { BillingService } from '../billing/billing.service';
 import { escapeHtml } from '../auth/auth.service';
 import { GroupGuard, NeedGroup } from './group.guard';
 import { createGroupSchema, updateGroupSchema } from './schemas';
@@ -32,6 +33,7 @@ export class GroupsController {
     private readonly notify: NotifyService,
     private readonly mail: MailService,
     private readonly envs: EnvService,
+    private readonly billing: BillingService,
   ) {}
 
   // ---------------------------------------------------------------- home
@@ -45,6 +47,7 @@ export class GroupsController {
     const groups: OverviewGroup[] = [];
     for (const m of memberships) {
       const g = m.group;
+      const blocked = !!g.billingPausedAt || (await this.billing.isGroupBlocked(g.id));
       const weekId = await this.weeks.ensureCurrentWeek(g);
       const ws = this.weeks.currentWeekStart(g);
       const week = weekId ? await this.prisma.week.findUnique({ where: { id: weekId } }) : null;
@@ -68,11 +71,12 @@ export class GroupsController {
         charged: !!mw,
         startsOnWeek: fromDbDate(m.startsOnWeek),
         goals,
-        checkinGoals: activeGoals.filter((x) => !x.excludedMemberIds.includes(m.id)).map((x) => ({ id: x.id, name: x.name, emoji: x.emoji, unit: x.unit, period: x.period, target: x.target })),
+        checkinGoals: blocked ? [] : activeGoals.filter((x) => !x.excludedMemberIds.includes(m.id)).map((x) => ({ id: x.id, name: x.name, emoji: x.emoji, unit: x.unit, period: x.period, target: x.target })),
         weekBalanceCents: balances.week,
         openDebtCents: -(balances.balance - balances.week),
         memberCount,
         pendingActions: joinReqs + payments + contests,
+        blocked,
       });
     }
     return { groups };
@@ -82,6 +86,7 @@ export class GroupsController {
   @Post('groups')
   async create(@Req() req: AuthedRequest, @Body() body: unknown) {
     const input = parseBody(createGroupSchema, body);
+    await this.billing.assertCanCreateGroup(req.user!.id);
     const tz = input.timezone;
     const thisWeek = weekStartOf(localDate(new Date(), tz));
     const startsOn = input.startMode === 'now' ? thisWeek : addDays(thisWeek, 7);
@@ -214,6 +219,7 @@ export class GroupsController {
   async transfer(@Req() req: AuthedRequest, @Param('memberId') memberId: string) {
     const target = await this.findMember(req, memberId);
     if (target.id === req.member!.id || target.status !== 'active') throw new DomainBadRequest('bad_request', 'Escolha outro membro ativo');
+    await this.billing.assertCanReceiveGroup(target.userId, req.group!.id);
     await this.prisma.$transaction([
       this.prisma.member.update({ where: { id: target.id }, data: { role: 'owner' } }),
       this.prisma.member.update({ where: { id: req.member!.id }, data: { role: 'admin' } }),
@@ -280,6 +286,7 @@ export class GroupsController {
   async invite(@Req() req: AuthedRequest, @Body() body: unknown) {
     const input = parseBody(inviteSchema, body);
     const g = req.group!;
+    await this.billing.assertCanAddMember(g.id);
     if (input.kind === 'email') {
       const existing = await this.prisma.member.findFirst({ where: { groupId: g.id, status: { in: ['active', 'leaving'] }, user: { email: input.email } } });
       if (existing) throw new DomainBadRequest('already_member', 'Essa pessoa já está no grupo');
@@ -347,6 +354,7 @@ export class GroupsController {
     const jr = await this.prisma.joinRequest.findFirst({ where: { id: requestId, groupId: req.group!.id, status: 'pending' } });
     if (!jr) throw new DomainNotFound('not_found', 'Pedido não encontrado');
     const g = req.group!;
+    if (decision === 'approve') await this.billing.assertCanAddMember(g.id);
     await this.prisma.joinRequest.update({ where: { id: jr.id }, data: { status: decision === 'approve' ? 'approved' : 'rejected', decidedById: req.user!.id, decidedAt: new Date() } });
     if (decision === 'approve') {
       await this.addMember(g.id, jr.userId);
@@ -411,6 +419,7 @@ export class GroupsController {
     if (existing && ['active', 'leaving'].includes(existing.status)) return { status: 'already_member', groupId: inv.groupId };
     if (inv.kind === 'email') {
       if (inv.email !== user.email) throw new DomainForbidden('invite_email_mismatch', 'Este convite foi enviado para outro e-mail. Entre com a conta certa.');
+      await this.billing.assertCanAddMember(inv.groupId);
       await this.prisma.invite.update({ where: { id: inv.id }, data: { uses: { increment: 1 }, revokedAt: new Date() } });
       await this.addMember(inv.groupId, user.id);
       await this.notify.admins(inv.groupId, { type: 'member_joined', title: `${user.name} entrou em ${inv.group.emoji} ${inv.group.name}`, link: `/g/${inv.groupId}/membros` });
@@ -418,6 +427,7 @@ export class GroupsController {
     }
     const pending = await this.prisma.joinRequest.findFirst({ where: { groupId: inv.groupId, userId: user.id, status: 'pending' } });
     if (!pending) {
+      await this.billing.assertCanAddMember(inv.groupId);
       await this.prisma.$transaction([
         this.prisma.joinRequest.create({ data: { groupId: inv.groupId, userId: user.id, inviteId: inv.id } }),
         this.prisma.invite.update({ where: { id: inv.id }, data: { uses: { increment: 1 } } }),

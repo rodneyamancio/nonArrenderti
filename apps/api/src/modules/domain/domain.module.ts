@@ -2,6 +2,7 @@ import { Controller, Get, HttpCode, Param, Post, Req, Module } from '@nestjs/com
 import type { NotificationView } from '@tenace/types';
 import { PrismaService } from '../../common/prisma.service';
 import type { AuthedRequest } from '../../common/request';
+import { AllowBlocked } from '../billing/billing.guard';
 import { CheckInsController } from './checkins.controller';
 import { GoalsWeeksController } from './goals-weeks.controller';
 import { GroupGuard } from './group.guard';
@@ -11,6 +12,7 @@ import { ViewsService } from './views.service';
 import { WeeksService } from './weeks.service';
 
 @Controller('notifications')
+@AllowBlocked()
 export class NotificationsController {
   constructor(private readonly prisma: PrismaService) {}
 

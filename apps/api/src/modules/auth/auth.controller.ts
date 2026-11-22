@@ -8,6 +8,7 @@ import { PrismaService } from '../../common/prisma.service';
 import type { AuthedRequest } from '../../common/request';
 import { parseBody } from '../../common/validation';
 import { CSRF_HEADER, CSRF_VALUE, Public } from './auth.guard';
+import { AllowBlocked } from '../billing/billing.guard';
 import { AuthService, toSessionUser, type LoginResult } from './auth.service';
 import { hashPassword, passwordProblem, verifyPassword } from './password';
 
@@ -18,6 +19,7 @@ const passwordSchema = z.object({ current: z.string().min(1).max(200), next: z.s
 const profileSchema = z.object({ name: z.string().trim().min(2).max(60).optional(), avatarColor: z.enum(BRAND_COLORS).optional() });
 
 @Controller('auth')
+@AllowBlocked()
 export class AuthController {
   constructor(
     private readonly auth: AuthService,

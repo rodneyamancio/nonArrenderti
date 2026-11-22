@@ -31,7 +31,12 @@ export type ErrorCode =
   | 'self_approval'
   | 'owner_cannot_leave'
   | 'last_goal'
-  | 'token_invalid';
+  | 'token_invalid'
+  | 'plan_limit'
+  | 'account_blocked'
+  | 'group_blocked'
+  | 'billing_unavailable'
+  | 'invoice_not_payable';
 
 export interface ApiErrorBody {
   statusCode: number;
@@ -232,6 +237,8 @@ export interface OverviewGroup {
   openDebtCents: number;
   memberCount: number;
   pendingActions: number;
+  /** The owner's subscription is blocked: the group is paused and read-only. */
+  blocked: boolean;
 }
 
 export type LedgerEntryType = 'COMMITMENT' | 'SLOT_CREDIT' | 'SLOT_REVERSAL' | 'PAYMENT' | 'ADJUSTMENT';
@@ -384,6 +391,72 @@ export interface WeekHistoryItem {
   weekEnd: string;
   status: 'open' | 'closed';
   members: { memberId: string; name: string; commitmentCents: number; creditedCents: number; penaltyCents: number | null; allMet: boolean }[];
+}
+
+// ------------------------------------------------------------------ plans & billing
+/** A plan the platform admin defines. `null` limits mean unlimited; price 0 = free. */
+export interface PlanView {
+  id: string;
+  name: string;
+  description: string;
+  priceCents: number;
+  intervalMonths: number;
+  maxGroups: number | null;
+  maxMembersPerGroup: number | null;
+  isDefault: boolean;
+  active: boolean;
+  sortOrder: number;
+}
+
+export type PlanInput = Omit<PlanView, 'id'>;
+
+export type BillingMethod = 'pix' | 'boleto';
+/** ok = nothing open · due = open, not late · past_due = late, inside the grace days · blocked. */
+export type BillingStatus = 'ok' | 'due' | 'past_due' | 'blocked';
+export type InvoiceStatus = 'open' | 'paid' | 'void';
+
+export interface InvoiceView {
+  id: string;
+  amountCents: number;
+  dueDate: string;
+  status: InvoiceStatus;
+  paidAt: string | null;
+  paidVia: string | null;
+  /** Late invoices are paid through a fresh checkout (Pix, boleto or card). */
+  overdue: boolean;
+}
+
+export interface BillingAddress {
+  zipCode: string;
+  street: string;
+  number: string;
+  complement?: string;
+  district: string;
+  city: string;
+  state: string;
+}
+
+export interface BillingProfile {
+  name: string;
+  document: string;
+  email: string;
+  phone: string;
+  address: BillingAddress;
+}
+
+export interface BillingView {
+  plan: PlanView | null;
+  status: BillingStatus;
+  /** Days left before the block when past_due; 0 when blocked. */
+  daysToBlock: number | null;
+  graceDays: number;
+  subscription: { method: BillingMethod; nextDueDate: string | null; livemode: boolean; cancelledAt: string | null } | null;
+  invoices: InvoiceView[];
+  usage: { groups: number; largestGroup: number };
+  plans: PlanView[];
+  /** Calebe Pay configured: paid plans can be subscribed. */
+  paymentsReady: boolean;
+  profile: BillingProfile | null;
 }
 
 export const BRAND_COLORS = ['violet', 'spark', 'mint', 'sky', 'rose', 'sun', 'ink'] as const;

@@ -75,6 +75,9 @@ export class WeeksService implements OnModuleInit, OnModuleDestroy {
     if (fromDbDate(group.startsOn) > ws) return null;
     const existing = await this.prisma.week.findUnique({ where: { groupId_weekStart: { groupId: group.id, weekStart: toDbDate(ws) } }, select: { id: true } });
     if (existing) return existing.id;
+    // Billing pause: no week opens while the owner is blocked, and it resumes on a Monday.
+    if (group.billingPausedAt) return null;
+    if (group.resumesOnWeek && fromDbDate(group.resumesOnWeek) > ws) return null;
     return this.openWeek(group.id, ws, now);
   }
 
@@ -220,6 +223,18 @@ export class WeeksService implements OnModuleInit, OnModuleDestroy {
       const week = await tx.week.findUniqueOrThrow({ where: { id: weekId }, include: { group: true, memberWeeks: { include: { member: { include: { user: true } } } } } });
       if (week.status === 'closed') return null;
       const ws = fromDbDate(week.weekStart);
+      if (week.group.billingPausedAt) {
+        // Paused group (owner blocked): the week is voided — compensating entries, no penalty, streaks untouched.
+        for (const mw of week.memberWeeks) {
+          const owed = mw.commitmentCents - mw.creditedCents;
+          if (owed > 0) {
+            await tx.ledgerEntry.create({ data: { groupId: week.groupId, memberId: mw.memberId, type: 'ADJUSTMENT', amountCents: owed, weekId, description: `Semana ${shortDate(ws)} anulada: grupo pausado (assinatura do dono em atraso)` } });
+          }
+          await tx.memberWeek.update({ where: { id: mw.id }, data: { penaltyCents: 0, allMet: null } });
+        }
+        await tx.week.update({ where: { id: weekId }, data: { status: 'closed', closedAt: now } });
+        return { group: week.group, ws, out: [], voided: true as const };
+      }
       const out: { userId: string; name: string; penalty: number; commitment: number }[] = [];
       for (const mw of week.memberWeeks) {
         const penalty = Math.max(0, mw.commitmentCents - mw.creditedCents);
@@ -237,6 +252,10 @@ export class WeeksService implements OnModuleInit, OnModuleDestroy {
       return { group: week.group, ws, out };
     }, { timeout: 30_000 });
     if (!results) return;
+    if ('voided' in results) {
+      await this.notify.feed(results.group.id, 'week_closed', `Semana ${shortDate(results.ws)} anulada: o grupo estava pausado. Ninguém foi cobrado.`);
+      return;
+    }
     const { group, ws, out } = results;
     const met = out.filter((o) => o.commitment > 0 && o.penalty === 0).length;
     const total = out.filter((o) => o.commitment > 0).length;

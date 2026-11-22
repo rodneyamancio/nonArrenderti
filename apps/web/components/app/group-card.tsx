@@ -74,7 +74,11 @@ export function GroupCard({ data }: { data: OverviewGroup }) {
       </Link>
 
       <div className="flex flex-col gap-4 p-5">
-        {!data.charged ? (
+        {data.blocked ? (
+          <div className="rounded-lg bg-warning-soft px-4 py-3 text-sm">
+            <strong>Grupo pausado.</strong> A assinatura de quem criou o grupo está em atraso. Ninguém é cobrado até a reativação.
+          </div>
+        ) : !data.charged ? (
           <div className="rounded-lg bg-muted px-4 py-3 text-sm">
             {week.status === 'not_started' ? (
               <>

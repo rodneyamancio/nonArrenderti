@@ -76,6 +76,12 @@ enum LedgerEntryType {
   ADJUSTMENT
 }
 
+enum InvoiceStatus {
+  open
+  paid
+  void
+}
+
 enum FundEntryType {
   PENALTY_ASSESSED
   PENALTY_ADJUSTED
@@ -101,6 +107,7 @@ model User {
   passwordResets PasswordReset[]
   members        Member[]
   notifications  Notification[]
+  subscription   Subscription?
 
   @@map("users")
 }
@@ -156,6 +163,10 @@ model Group {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   archivedAt      DateTime?
+  /// Owner's subscription blocked: no week opens; the open week is voided at close.
+  billingPausedAt DateTime?
+  /// After a billing pause, weeks resume on this Monday (never mid-week).
+  resumesOnWeek   DateTime? @db.Date
 
   members      Member[]
   goals        Goal[]
@@ -519,4 +530,80 @@ model AuditLog {
 
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+/// Plans defined by the platform admin. null limits = unlimited; priceCents 0 = free.
+/// Exactly one plan may be the default (applied to everyone without a paid subscription).
+model Plan {
+  id                 String   @id @default(cuid())
+  name               String
+  description        String   @default("")
+  priceCents         Int      @default(0)
+  intervalMonths     Int      @default(1)
+  maxGroups          Int?
+  maxMembersPerGroup Int?
+  isDefault          Boolean  @default(false)
+  active             Boolean  @default(true)
+  sortOrder          Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  subscriptions Subscription[]
+
+  @@map("plans")
+}
+
+/// A user's plan. Paid plans have a Calebe Pay subscription (Pix or boleto cycles).
+model Subscription {
+  id                     String    @id @default(cuid())
+  userId                 String    @unique
+  user                   User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// null = the default plan (free); paid plans always set it.
+  planId                 String?
+  plan                   Plan?     @relation(fields: [planId], references: [id], onDelete: SetNull)
+  method                 String?
+  providerSubscriptionId String?   @unique
+  /// Persisted BEFORE calling the provider: a retry after a timeout returns the same subscription.
+  providerIdempotencyKey String?
+  livemode               Boolean   @default(false)
+  nextDueDate            DateTime? @db.Date
+  billingProfile         Json?
+  /// Cached billingState() of the open invoices; the guards read it (ok | due | past_due | blocked).
+  status                 String    @default("ok")
+  blockedAt              DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  invoices Invoice[]
+
+  @@index([status])
+  @@map("subscriptions")
+}
+
+/// One billing cycle. Paid by the cycle's own Pix/boleto or, late or by card, by a checkout.
+model Invoice {
+  id                     String        @id @default(cuid())
+  subscriptionId         String
+  subscription           Subscription  @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  userId                 String
+  providerSubscriptionId String
+  cycle                  Int?
+  amountCents            Int
+  dueDate                DateTime      @db.Date
+  status                 InvoiceStatus @default(open)
+  providerReference      String?       @unique
+  paymentUrl             String?
+  checkoutId             String?
+  checkoutUrl            String?
+  checkoutDueDate        DateTime?     @db.Date
+  checkoutKey            String?
+  paidAt                 DateTime?
+  paidVia                String?
+  paidTransactionId      String?
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+
+  @@unique([providerSubscriptionId, dueDate])
+  @@index([userId, status])
+  @@map("invoices")
 }

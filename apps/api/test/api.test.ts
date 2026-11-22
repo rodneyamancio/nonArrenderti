@@ -264,3 +264,162 @@ describe('platform admin, integrations and webhooks', () => {
     expect(stored?.processedAt).toBeTruthy();
   });
 });
+
+describe('plans, subscriptions and the block (Calebe Pay faked)', () => {
+  const boss = new Client();
+  const carla = new Client();
+  const prisma = () => app.get((nodeRequire(DIST + 'common/prisma.service.js') as typeof import('../src/common/prisma.service')).PrismaService);
+  const payments = () => app.get((nodeRequire(DIST + 'modules/integrations/payments.service.js') as typeof import('../src/modules/integrations/payments.service')).PaymentsService);
+  let freeId = '';
+  let proId = '';
+  const fake = {
+    paidTx: new Set<string>(),
+    checkoutTx: null as string | null,
+    cycleDue: null as string | null,
+    created: [] as { key: string; method: string; firstDueDate: string; amountCents: number }[],
+  };
+  const profile = { name: 'Ana Souza', document: '529.982.247-25', email: 'ana@test.dev', phone: '(11) 99999-8888', address: { zipCode: '01310-100', street: 'Avenida Paulista', number: '1000', district: 'Bela Vista', city: 'São Paulo', state: 'sp' } };
+
+  beforeAll(async () => {
+    await boss.post('/auth/signup', { name: 'Boss', email: 'boss@test.dev', password: 'senha1234' });
+    await prisma().user.update({ where: { email: 'boss@test.dev' }, data: { role: 'platform_admin' } });
+    await boss.post('/auth/login', { email: 'boss@test.dev', password: 'senha1234' });
+    await carla.post('/auth/signup', { name: 'Carla', email: 'carla@test.dev', password: 'senha1234' });
+    payments().override = {
+      name: 'calebepay',
+      testMode: true,
+      async createCheckout(input) {
+        return { providerCheckoutId: `chk_${input.reference}`, checkoutUrl: `https://pay.test/checkout/${input.reference}`, livemode: false };
+      },
+      async getCheckout(id) {
+        return { id, status: fake.checkoutTx ? 'completed' : 'open', transactionId: fake.checkoutTx ?? undefined };
+      },
+      async getTransaction(id) {
+        return { id, status: fake.paidTx.has(id) ? 'paid' : 'pending', reference: '', amountCents: 2990, livemode: false, simulated: true };
+      },
+      async createSubscription(input) {
+        fake.created.push({ key: input.idempotencyKey, method: input.method, firstDueDate: input.firstDueDate, amountCents: input.amountCents });
+        return { id: `sub_${fake.created.length}`, status: 'active', nextDueDate: '2099-01-01', cycle: 1, livemode: false, lastError: null };
+      },
+      async getSubscription(id) {
+        return { id, status: 'active', nextDueDate: '2099-01-01', cycle: 1, livemode: false, lastError: null };
+      },
+      async listCycles(id) {
+        const c = fake.created[Number(id.slice(4)) - 1]!;
+        return [{ cycle: 0, dueDate: fake.cycleDue ?? c.firstDueDate, amountCents: c.amountCents, status: 'created', transactionId: null, transactionStatus: null, paymentUrl: `https://pay.test/cycle/${id}` }];
+      },
+      async cancelSubscription() {},
+      async ping() {
+        return { mode: 'test' as const };
+      },
+    };
+  });
+
+  afterAll(() => {
+    payments().override = null;
+  });
+
+  it('admin creates a free default plan and a paid plan; users cannot', async () => {
+    const free = await boss.post('/admin/plans', { name: 'Grátis', priceCents: 0, intervalMonths: 1, maxGroups: 1, maxMembersPerGroup: 2, isDefault: true });
+    expect(free.status).toBe(201);
+    freeId = free.data.id;
+    expect((await boss.post('/admin/plans', { name: 'Caro padrão', priceCents: 100, intervalMonths: 1, maxGroups: null, maxMembersPerGroup: null, isDefault: true })).status).toBe(400);
+    const pro = await boss.post('/admin/plans', { name: 'Pro', priceCents: 2990, intervalMonths: 1, maxGroups: 5, maxMembersPerGroup: 20 });
+    proId = pro.data.id;
+    expect((await ana.post('/admin/plans', { name: 'x', priceCents: 0, intervalMonths: 1, maxGroups: 1, maxMembersPerGroup: 2 })).status).toBe(404);
+    expect((await new Client().get('/plans')).data.plans.map((p: { name: string }) => p.name)).toEqual(['Grátis', 'Pro']);
+  });
+
+  it('the free plan limits groups and members', async () => {
+    // Ana already owns one group with Bruno (2 people): no second group, no third member.
+    const g = await ana.post('/groups', { name: 'Segundo', emoji: '📚', color: 'sky', timezone: 'America/Sao_Paulo', startMode: 'next', destination: { label: 'Caixa', holderName: '', pixKeyType: null, pixKey: '', bankInfo: '', city: '' }, goals: [{ name: 'Ler', emoji: '📚', period: 'weekly', target: 3, unit: 'times', stakeCents: 500, activeWeekdays: [1, 2, 3, 4, 5, 6, 7] }] });
+    expect(g.status).toBe(403);
+    expect(g.data.code).toBe('plan_limit');
+    const inv = await ana.post(`/groups/${groupId}/invites`, { kind: 'link' });
+    expect(inv.status).toBe(403);
+    expect((await ana.get('/me/billing')).data).toMatchObject({ status: 'ok', plan: { name: 'Grátis' }, usage: { groups: 1, largestGroup: 2 } });
+  });
+
+  it('subscribing to Pro (Pix) creates the Calebe subscription and the first invoice', async () => {
+    const r = await ana.post('/me/billing/subscribe', { planId: proId, method: 'pix', profile });
+    expect(r.status).toBe(200);
+    expect(r.data.plan.name).toBe('Pro');
+    expect(r.data.status).toBe('due');
+    expect(r.data.invoices).toHaveLength(1);
+    expect(fake.created[0]).toMatchObject({ method: 'pix', firstDueDate: today, amountCents: 2990 });
+    const stored = await prisma().subscription.findFirst({ where: { user: { email: 'ana@test.dev' } } });
+    expect((stored?.billingProfile as { document: string }).document).toBe('52998224725');
+    // On time: the cycle's own Pix link.
+    const pay = await ana.post(`/me/billing/invoices/${r.data.invoices[0].id}/pay`, {});
+    expect(pay.data.url).toBe('https://pay.test/cycle/sub_1');
+    // Pro allows more members now.
+    expect((await ana.post(`/groups/${groupId}/invites`, { kind: 'link' })).status).toBe(201);
+  });
+
+  it('an invoice 6 days late blocks the owner and pauses the group for members', async () => {
+    const { addDays } = await import('@tenace/rules');
+    const old = addDays(today, -6);
+    const anaUser = await prisma().user.findUniqueOrThrow({ where: { email: 'ana@test.dev' } });
+    await prisma().invoice.updateMany({ where: { userId: anaUser.id }, data: { dueDate: new Date(`${old}T00:00:00Z`), providerReference: `sub_1:${old}` } });
+    fake.cycleDue = old;
+    const sync = await ana.post('/me/billing/sync');
+    expect(sync.data.status).toBe('blocked');
+    const blocked = await ana.get('/me/overview');
+    expect(blocked.status).toBe(403);
+    expect(blocked.data.code).toBe('account_blocked');
+    expect((await ana.get('/me/billing')).status).toBe(200);
+    // Bruno (member) sees the group as paused and cannot open it.
+    const ov = await bruno.get('/me/overview');
+    expect(ov.data.groups.find((g: { group: { id: string } }) => g.group.id === groupId)).toMatchObject({ blocked: true, checkinGoals: [] });
+    const gr = await bruno.get(`/groups/${groupId}/week`);
+    expect(gr.status).toBe(403);
+    expect(gr.data.code).toBe('group_blocked');
+    expect((await prisma().group.findUniqueOrThrow({ where: { id: groupId } })).billingPausedAt).toBeTruthy();
+    // A blocked owner cannot dodge the debt by switching to the free plan.
+    expect((await ana.post('/me/billing/subscribe', { planId: freeId })).data.code).toBe('account_blocked');
+  });
+
+  it('paying the late invoice through a checkout unblocks at once and the group resumes', async () => {
+    const invoice = (await ana.get('/me/billing')).data.invoices[0];
+    expect(invoice.overdue).toBe(true);
+    const pay = await ana.post(`/me/billing/invoices/${invoice.id}/pay`, {});
+    expect(pay.data.url).toBe(`https://pay.test/checkout/tinv-${invoice.id}`);
+    fake.checkoutTx = 'txn_late_1';
+    const notYet = await ana.post('/me/billing/sync');
+    expect(notYet.data.status).toBe('blocked'); // checkout chosen but not paid yet
+    fake.paidTx.add('txn_late_1');
+    const done = await ana.post('/me/billing/sync');
+    expect(done.data.status).toBe('ok');
+    expect(done.data.invoices[0]).toMatchObject({ status: 'paid', paidVia: 'checkout' });
+    expect((await ana.get('/me/overview')).status).toBe(200);
+    expect((await bruno.get(`/groups/${groupId}/week`)).status).toBe(200);
+    expect((await prisma().group.findUniqueOrThrow({ where: { id: groupId } })).billingPausedAt).toBeNull();
+  });
+
+  it('a week of a paused group closes voided: owed amounts compensated, no penalty to the fund', async () => {
+    const { WeeksService } = nodeRequire(DIST + 'modules/domain/weeks.service.js') as typeof import('../src/modules/domain/weeks.service');
+    const weeks = app.get(WeeksService);
+    const { addDays, weekStartOf } = await import('@tenace/rules');
+    const future = addDays(weekStartOf(today), 14);
+    const weekId = await weeks.openWeek(groupId, future);
+    await prisma().group.update({ where: { id: groupId }, data: { billingPausedAt: new Date() } });
+    await weeks.closeWeek(weekId);
+    const mws = await prisma().memberWeek.findMany({ where: { weekId } });
+    expect(mws.length).toBeGreaterThan(0);
+    expect(mws.every((m) => m.penaltyCents === 0 && m.allMet === null)).toBe(true);
+    const ledger = await prisma().ledgerEntry.findMany({ where: { weekId } });
+    const net = ledger.reduce((sum, e) => sum + e.amountCents, 0);
+    expect(net).toBe(0); // COMMITMENT − … + ADJUSTMENT = 0: nobody owes this week
+    expect(await prisma().fundEntry.count({ where: { weekId } })).toBe(0);
+    await prisma().group.update({ where: { id: groupId }, data: { billingPausedAt: null } });
+  });
+
+  it('switching back to the free plan is refused while usage does not fit', async () => {
+    const tooBig = await ana.post('/groups', { name: 'Segundo', emoji: '📚', color: 'sky', timezone: 'America/Sao_Paulo', startMode: 'next', destination: { label: 'Caixa', holderName: '', pixKeyType: null, pixKey: '', bankInfo: '', city: '' }, goals: [{ name: 'Ler', emoji: '📚', period: 'weekly', target: 3, unit: 'times', stakeCents: 500, activeWeekdays: [1, 2, 3, 4, 5, 6, 7] }] });
+    expect(tooBig.status).toBe(201);
+    const back = await ana.post('/me/billing/subscribe', { planId: freeId });
+    expect(back.status).toBe(400);
+    expect(back.data.message).toMatch(/2 grupos/);
+    await prisma().plan.updateMany({ data: { isDefault: false } }); // later suites run without limits
+  });
+});

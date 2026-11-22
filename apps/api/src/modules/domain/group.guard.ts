@@ -4,6 +4,7 @@ import { GROUP_ROLE_PERMISSIONS, type GroupPermission } from '@tenace/types';
 import { DomainForbidden, DomainNotFound } from '../../common/errors/domain-exceptions';
 import { PrismaService } from '../../common/prisma.service';
 import type { AuthedRequest, MemberContext } from '../../common/request';
+import { BillingService } from '../billing/billing.service';
 
 export const GROUP_PERMISSION = 'tenace:group-permission';
 /** Requires the caller's role in `:groupId` to grant this permission. */
@@ -18,6 +19,7 @@ export class GroupGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
     private readonly prisma: PrismaService,
+    private readonly billing: BillingService,
   ) {}
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
@@ -37,6 +39,10 @@ export class GroupGuard implements CanActivate {
     };
     req.member = ctxMember;
     req.group = member.group;
+    // Owner's subscription blocked: the group is paused for everyone (docs/spec.md §8.10).
+    if (member.group.billingPausedAt || (await this.billing.isGroupBlocked(groupId))) {
+      throw new DomainForbidden('group_blocked', 'Este grupo está pausado: a assinatura do dono está em atraso. Ninguém é cobrado enquanto isso.', { owner: member.role === 'owner' });
+    }
     const needed = this.reflector.getAllAndOverride<GroupPermission | undefined>(GROUP_PERMISSION, [ctx.getHandler(), ctx.getClass()]) ?? 'group:group:read';
     if (!ctxMember.permissions.includes(needed)) throw new DomainForbidden('insufficient_permission', 'Você não tem permissão para esta ação', { permission: needed });
     return true;

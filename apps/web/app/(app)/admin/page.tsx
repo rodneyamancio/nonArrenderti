@@ -2,13 +2,14 @@
 import { KeyRound, Link2, Search, ShieldCheck, Wand2 } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
+import { AdminPlans } from '@/components/app/admin-plans';
 import { useApp } from '@/components/app/session';
 import { Avatar, Badge, Button, Card, CopyButton, Dialog, ErrorState, Field, Input, Notice, PageHeader, Segmented, Spinner, Stat, Switch, useToast } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
 import { fmtDateTime, timeAgo } from '@/lib/format';
 import { useApi } from '@/lib/use-api';
 
-type Tab = 'usuarios' | 'integracoes' | 'sistema';
+type Tab = 'usuarios' | 'planos' | 'integracoes' | 'sistema';
 
 export default function AdminPage() {
   return (
@@ -26,18 +27,20 @@ function Admin() {
   if (user.role !== 'platform_admin') return <Notice tone="warning">Área restrita à administração da plataforma.</Notice>;
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader title="Administração" description="Usuários, integrações e saúde da plataforma." />
+      <PageHeader title="Administração" description="Usuários, planos, integrações e saúde da plataforma." />
       <Segmented
         label="Seções"
         value={tab}
         onChange={(t) => router.replace(`/admin${t === 'usuarios' ? '' : `?tab=${t}`}`, { scroll: false })}
         options={[
           { value: 'usuarios', label: 'Usuários' },
+          { value: 'planos', label: 'Planos' },
           { value: 'integracoes', label: 'Integrações' },
           { value: 'sistema', label: 'Sistema' },
         ]}
       />
       {tab === 'usuarios' && <Users />}
+      {tab === 'planos' && <AdminPlans />}
       {tab === 'integracoes' && <Integrations />}
       {tab === 'sistema' && <System />}
     </div>

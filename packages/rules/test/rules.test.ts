@@ -18,6 +18,11 @@ import {
   weekStartOf,
   weekWindow,
   type GoalSpec,
+  billingState,
+  canAddMember,
+  canOwnAnotherGroup,
+  planFitProblem,
+  planPriceLabel,
 } from '../src';
 
 const SP = 'America/Sao_Paulo';
@@ -150,5 +155,33 @@ describe('money and PIX', () => {
     expect(p).toContain('6009SAO PAULO');
     expect(p).toContain('62070503***');
     expect(p.slice(-4)).toBe(crc16(p.slice(0, -4)));
+  });
+});
+
+describe('billing', () => {
+  const inv = (dueDate: string, status: 'open' | 'paid' | 'void' = 'open') => ({ dueDate, status });
+  it('is ok with nothing open and due until the due date', () => {
+    expect(billingState([inv('2026-11-10', 'paid')], '2026-11-20').status).toBe('ok');
+    expect(billingState([inv('2026-11-10')], '2026-11-10')).toMatchObject({ status: 'due', oldestDue: '2026-11-10' });
+  });
+  it('gives 5 days of grace, then blocks on the 6th day after the due date', () => {
+    expect(billingState([inv('2026-11-10')], '2026-11-11')).toMatchObject({ status: 'past_due', daysToBlock: 5, lastGraceDay: '2026-11-15' });
+    expect(billingState([inv('2026-11-10')], '2026-11-15')).toMatchObject({ status: 'past_due', daysToBlock: 1 });
+    expect(billingState([inv('2026-11-10')], '2026-11-16')).toMatchObject({ status: 'blocked', daysToBlock: 0 });
+  });
+  it('looks at the oldest open invoice and ignores void ones', () => {
+    expect(billingState([inv('2026-12-10'), inv('2026-11-10')], '2026-11-20').status).toBe('blocked');
+    expect(billingState([inv('2026-10-10', 'void'), inv('2026-11-30')], '2026-11-20').status).toBe('due');
+  });
+  it('checks plan limits (null = unlimited)', () => {
+    expect(canOwnAnotherGroup(null, 99)).toBe(true);
+    expect(canOwnAnotherGroup({ maxGroups: 1, maxMembersPerGroup: null }, 1)).toBe(false);
+    expect(canAddMember({ maxGroups: null, maxMembersPerGroup: 5 }, 4)).toBe(true);
+    expect(canAddMember({ maxGroups: null, maxMembersPerGroup: 5 }, 5)).toBe(false);
+    expect(planFitProblem({ name: 'Grátis', maxGroups: 1, maxMembersPerGroup: 5 }, { groups: 2, largestGroup: 3 })).toMatch(/2 grupos/);
+    expect(planFitProblem({ name: 'Grátis', maxGroups: 1, maxMembersPerGroup: 5 }, { groups: 1, largestGroup: 6 })).toMatch(/6 pessoas/);
+    expect(planFitProblem({ name: 'Pro', maxGroups: null, maxMembersPerGroup: null }, { groups: 9, largestGroup: 40 })).toBeNull();
+    expect(planPriceLabel(1990, 1, (c) => `R$ ${c / 100}`)).toBe('R$ 19.9/mês');
+    expect(planPriceLabel(0, 1, String)).toBe('Grátis');
   });
 });

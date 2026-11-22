@@ -49,7 +49,11 @@ export function GroupCard({ data }: { data: OverviewGroup }) {
       </Pressable>
 
       <View style={{ padding: 16, gap: 16 }}>
-        {!data.charged ? (
+        {data.blocked ? (
+          <View style={{ backgroundColor: c.warningSoft, borderRadius: radius.md, padding: 14 }}>
+            <T size={14}>Grupo pausado: a assinatura de quem criou o grupo está em atraso. Ninguém é cobrado até a reativação.</T>
+          </View>
+        ) : !data.charged ? (
           <View style={{ backgroundColor: c.surfaceSunken, borderRadius: radius.md, padding: 14 }}>
             <T size={14}>
               {week.status === 'not_started' ? `O grupo começa na segunda, ${fmtDay(data.startsOnWeek)}. Já pode convidar a galera!` : `Suas metas começam a contar em ${fmtDay(data.startsOnWeek)}. Até lá, registre para treinar 😉`}

@@ -39,6 +39,11 @@ notifications. ✅ `pnpm --filter @tenace/api test` green (11 integration tests)
 `/admin`: users (manual password, reset link, block, promote), Resend and Calebe Pay with
 encrypted credentials, Calebe Pay webhook. ✅ 17 API integration tests.
 
+## Phase 8c — Plans and subscriptions ✅
+Plans by the platform admin (free → paid; limits: groups and people per group), Calebe Pay
+subscriptions (Pix/boleto) with invoices, card/late payment via checkout, block after 5 days
+with paused groups and voided weeks. ✅ 24 API integration tests (6 new, Calebe Pay faked).
+
 ## Phase 9 — Observability + audit ⏳
 Structured logs (pino), Sentry, audit log for admin actions.
 

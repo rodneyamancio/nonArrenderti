@@ -1,6 +1,6 @@
 'use client';
 import { BRAND_COLORS, type SessionUser } from '@tenace/types';
-import { LogOut, Monitor, Moon, Shield, Sun } from 'lucide-react';
+import { CreditCard, LogOut, Monitor, Moon, Shield, Sun } from 'lucide-react';
 import Link from 'next/link';
 import { useTheme } from 'next-themes';
 import { useRouter } from 'next/navigation';
@@ -118,6 +118,10 @@ export default function ProfilePage() {
           </Button>
         </form>
       </Card>
+
+      <Link href="/assinatura" className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 font-semibold shadow-xs hover:bg-accent">
+        <CreditCard className="h-5 w-5 text-brand" aria-hidden /> Assinatura e plano
+      </Link>
 
       {user.role === 'platform_admin' && (
         <Link href="/admin" className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 font-semibold shadow-xs hover:bg-accent">

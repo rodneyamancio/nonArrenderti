@@ -1,6 +1,6 @@
 'use client';
-import type { OverviewGroup, SessionUser } from '@tenace/types';
-import { Bell, Home, LayoutGrid, Plus, Shield, UserRound } from 'lucide-react';
+import type { BillingStatus, OverviewGroup, SessionUser } from '@tenace/types';
+import { Bell, CreditCard, Home, LayoutGrid, Lock, Plus, Shield, UserRound } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
@@ -19,6 +19,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [groups, setGroups] = useState<OverviewGroup[]>();
   const [unread, setUnread] = useState(0);
   const [checkIn, setCheckIn] = useState<CheckInTarget | null>(null);
+  const [billing, setBilling] = useState<{ status: BillingStatus; daysToBlock: number | null } | null>(null);
 
   useEffect(() => {
     api<{ user: SessionUser }>('/auth/me')
@@ -39,13 +40,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       .catch(() => undefined);
   }, []);
 
+  const refreshBilling = useCallback(() => {
+    api<{ status: BillingStatus; daysToBlock: number | null }>('/me/billing')
+      .then((b) => setBilling({ status: b.status, daysToBlock: b.daysToBlock }))
+      .catch(() => undefined);
+  }, []);
+
   useEffect(() => {
     if (!user) return;
+    refreshBilling();
     void reloadGroups();
     refreshUnread();
     const t = setInterval(refreshUnread, 60_000);
     return () => clearInterval(t);
-  }, [user, reloadGroups, refreshUnread]);
+  }, [user, reloadGroups, refreshUnread, refreshBilling, pathname]);
   useOnDataChanged(reloadGroups);
 
   if (!user) return <Spinner label="Abrindo o Tenace…" />;
@@ -56,7 +64,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     { href: '/grupos', label: 'Grupos', icon: LayoutGrid },
     { href: '/perfil', label: 'Perfil', icon: UserRound },
   ];
-  const sideNav = user.role === 'platform_admin' ? [...nav, { href: '/admin', label: 'Administração', icon: Shield }] : nav;
+  const sideNav = [...nav, { href: '/assinatura', label: 'Assinatura', icon: CreditCard }, ...(user.role === 'platform_admin' ? [{ href: '/admin', label: 'Administração', icon: Shield }] : [])];
+  // Blocked account: only billing, profile and notices stay reachable (the API refuses the rest).
+  const blocked = billing?.status === 'blocked' && !['/assinatura', '/perfil', '/notificacoes'].some((p) => pathname.startsWith(p));
   const isActive = (href: string) => pathname === href || (href === '/grupos' && (pathname.startsWith('/g/') || pathname.startsWith('/grupos')));
 
   return (
@@ -144,7 +154,28 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </header>
 
           <main id="main" className="mx-auto w-full max-w-5xl px-4 pt-5 pb-28 sm:px-6 lg:px-10 lg:pt-8 lg:pb-12">
-            {children}
+            {billing?.status === 'past_due' && !pathname.startsWith('/assinatura') && (
+              <Link href="/assinatura" className="mb-5 flex items-center justify-between gap-3 rounded-lg bg-warning-soft px-4 py-3 text-sm">
+                <span>
+                  <strong>Mensalidade em atraso.</strong> Pague em até {billing.daysToBlock} {billing.daysToBlock === 1 ? 'dia' : 'dias'} para evitar o bloqueio.
+                </span>
+                <span className="shrink-0 font-semibold text-warning">Pagar →</span>
+              </Link>
+            )}
+            {blocked ? (
+              <div className="mx-auto flex max-w-md flex-col items-center gap-4 py-16 text-center">
+                <span className="flex h-16 w-16 items-center justify-center rounded-full bg-danger-soft text-danger">
+                  <Lock className="h-8 w-8" aria-hidden />
+                </span>
+                <h1 className="text-2xl font-extrabold">Conta bloqueada</h1>
+                <p className="text-muted-foreground">Uma mensalidade passou mais de 5 dias do vencimento. Seus grupos estão pausados e ninguém é cobrado enquanto isso. Pague para reativar tudo na hora.</p>
+                <Link href="/assinatura" className="inline-flex h-12 items-center rounded-md bg-primary px-6 font-bold text-primary-foreground shadow-md hover:bg-primary-hover">
+                  Pagar agora
+                </Link>
+              </div>
+            ) : (
+              children
+            )}
           </main>
         </div>
       </div>

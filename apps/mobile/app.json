@@ -2,6 +2,7 @@
   "expo": {
     "name": "Tenace",
     "slug": "tenace",
+    "owner": "valiant-group-do-brasil",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -67,6 +68,16 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "eas": {
+        "projectId": "e78a3a9e-ab45-4d70-a0c7-44580431bb49"
+      }
     }
   }
 }

@@ -1,12 +1,13 @@
 'use client';
 import type { GroupDetail } from '@tenace/types';
-import { Plus } from 'lucide-react';
+import { PauseCircle, Plus } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, usePathname } from 'next/navigation';
 import { useCallback } from 'react';
 import { GroupCtx } from '@/components/app/group-context';
 import { useApp, useOnDataChanged } from '@/components/app/session';
 import { ErrorState, Spinner, toneClass } from '@/components/ui';
+import { ApiError } from '@/lib/api';
 import { cx } from '@/lib/format';
 import { useApi } from '@/lib/use-api';
 
@@ -18,6 +19,20 @@ export default function GroupLayout({ children }: { children: React.ReactNode })
   const quiet = useCallback(() => void reload(), [reload]);
   useOnDataChanged(quiet);
 
+  if (error instanceof ApiError && error.code === 'group_blocked') {
+    return (
+      <div className="mx-auto flex max-w-md flex-col items-center gap-4 py-16 text-center">
+        <span className="flex h-16 w-16 items-center justify-center rounded-full bg-warning-soft text-warning">
+          <PauseCircle className="h-8 w-8" aria-hidden />
+        </span>
+        <h1 className="text-2xl font-extrabold">Grupo pausado</h1>
+        <p className="text-muted-foreground">A assinatura de quem criou o grupo está em atraso. As semanas ficam paradas e ninguém é cobrado até a reativação — você recebe um aviso quando voltar.</p>
+        <Link href="/inicio" className="font-semibold text-brand">
+          Voltar ao início
+        </Link>
+      </div>
+    );
+  }
   if (error && !group) return <ErrorState error={error} onRetry={reload} />;
   if (!group) return <Spinner />;
 

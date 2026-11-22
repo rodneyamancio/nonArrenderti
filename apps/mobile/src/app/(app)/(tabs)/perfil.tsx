@@ -1,7 +1,8 @@
 import { errorMessage } from '@tenace/api-client';
 import { BRAND_COLORS, type SessionUser } from '@tenace/types';
 import * as WebBrowser from 'expo-web-browser';
-import { Check, LogOut, Shield } from 'lucide-react-native';
+import { router } from 'expo-router';
+import { Check, ChevronRight, CreditCard, LogOut, Shield } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { Alert, Pressable, View } from 'react-native';
 import { useMutation } from '@/data/use-api';
@@ -89,6 +90,14 @@ export default function ProfileScreen() {
             </Row>
           </View>
         </Card>
+
+        <Pressable onPress={() => router.push('/assinatura')} accessibilityRole="button" style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, borderRadius: radius.lg, borderWidth: 1, borderColor: c.border, backgroundColor: pressed ? c.surfaceHover : c.surface })}>
+          <CreditCard size={20} color={c.brand} />
+          <T weight="semibold" style={{ flex: 1 }}>
+            Assinatura e plano
+          </T>
+          <ChevronRight size={18} color={c.textMuted} />
+        </Pressable>
 
         <Card title="Aparência">
           <Segmented<ThemePref>

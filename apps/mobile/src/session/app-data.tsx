@@ -1,4 +1,4 @@
-import type { OverviewGroup } from '@tenace/types';
+import type { BillingStatus, OverviewGroup } from '@tenace/types';
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { AppState } from 'react-native';
 import { useApi } from '@/data/use-api';
@@ -17,6 +17,8 @@ interface AppData {
   refreshGroups: () => void;
   unread: number;
   refreshUnread: () => void;
+  billing: { status: BillingStatus; daysToBlock: number | null } | null;
+  refreshBilling: () => void;
   checkIn: CheckInTarget | null;
   openCheckIn: (t?: CheckInTarget) => void;
   closeCheckIn: () => void;
@@ -29,6 +31,13 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   const overview = useApi<{ groups: OverviewGroup[] }>('/me/overview');
   const [unread, setUnread] = useState(0);
   const [checkIn, setCheckIn] = useState<CheckInTarget | null>(null);
+  const [billing, setBilling] = useState<{ status: BillingStatus; daysToBlock: number | null } | null>(null);
+
+  const refreshBilling = useCallback(() => {
+    api<{ status: BillingStatus; daysToBlock: number | null }>('/me/billing')
+      .then((b) => setBilling({ status: b.status, daysToBlock: b.daysToBlock }))
+      .catch(() => undefined);
+  }, []);
 
   const refreshUnread = useCallback(() => {
     api<{ unread: number }>('/notifications/unread')
@@ -38,10 +47,15 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     refreshUnread();
-    const t = setInterval(refreshUnread, 60_000);
+    refreshBilling();
+    const t = setInterval(() => {
+      refreshUnread();
+      refreshBilling();
+    }, 60_000);
     const sub = AppState.addEventListener('change', (s) => {
       if (s === 'active') {
         refreshUnread();
+        refreshBilling();
         void overview.quiet();
       }
     });
@@ -50,7 +64,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       sub.remove();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refreshUnread]);
+  }, [refreshUnread, refreshBilling]);
 
   return (
     <Ctx.Provider
@@ -62,6 +76,8 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         refreshGroups: () => void overview.refresh(),
         unread,
         refreshUnread,
+        billing,
+        refreshBilling,
         checkIn,
         openCheckIn: (t) => setCheckIn(t ?? {}),
         closeCheckIn: () => setCheckIn(null),

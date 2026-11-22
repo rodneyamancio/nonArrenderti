@@ -161,12 +161,17 @@ admin from `SEED_ADMIN_*`.
 - **Integrations:** Resend and Calebe Pay — config + write-only secrets, encrypted in the
   database (AES-256-GCM bound to the integration key, `ENCRYPTION_KEY`), shown only as a hint
   (`cp_test_…1234`); "send test e-mail" / "test connection".
+- **Plans:** create/edit plans from free to any price (interval 1, 3, 6 or 12 months) with
+  two limits — groups the person may own and people per group (owner included); empty =
+  unlimited. One plan is the **default** (must be free) and applies to everyone without a
+  paid subscription; with no default plan nobody has limits. Price changes apply to new
+  subscriptions only. The tab also lists subscriptions and their status.
 - **System:** counts, current e-mail channel, last Calebe Pay webhooks.
 - Every admin action is written to `audit_logs` (never secret values).
 - Emergency from the server shell: `NEW_PASSWORD=… node dist/cli/set-password.js <email> [--admin]`
   inside the api container.
 
-No plans, billing or feature flags yet.
+No feature flags yet. Plans and billing: §8.10.
 
 ## 8. Functional modules
 
@@ -327,8 +332,42 @@ the portal. Notification links (`/g/:id/conta?tab=…`) open the matching screen
 invite links are `https://tenace.amancio.family/convite/<token>` (paste in Início or open
 `tenace://convite/<token>`).
 
-Not built yet (need the company Expo account, `eas init`): store builds (TestFlight /
-Play internal track), OTA updates, push notifications, universal links, Face ID lock.
+EAS project: `@valiant-group-do-brasil/tenace` (bundle `family.amancio.tenace`, Apple team of
+the company). The first iOS build needs an interactive Apple login (`eas build`) and the App
+Store Connect app record (`eas submit` creates it). Not built yet: OTA updates, push
+notifications, universal links, Face ID lock. In the app, invoices are paid on the Calebe
+Pay page and plans are changed on the portal (App Store rules on digital subscriptions —
+see §17).
+
+### 8.10 Plans, subscriptions and the block (`modules/billing`)
+
+- **Who pays:** the person who owns groups. Their plan limits the groups they own and the
+  people in each of them; checked when creating a group, inviting, approving a join request,
+  accepting an e-mail invite and transferring ownership (`plan_limit`). Switching to a smaller
+  plan is refused while the usage does not fit.
+- **Paid plan = Calebe Pay subscription** (`POST /v1/subscriptions`, method **Pix or boleto**,
+  chosen by the person; first due date today). Calebe Pay issues every cycle; each cycle is an
+  `Invoice` (reference `sub_ID:YYYY-MM-DD`). Card is not stored: every invoice offers
+  “Cartão ou outra forma”, a Calebe Pay **checkout** (Pix, boleto or card; reference
+  `tinv-<invoiceId>`). Plan change between paid plans: the old subscription is cancelled
+  and a new one starts (at the next due date when the current cycle is paid, otherwise today).
+- **Late payment:** the Calebe subscription cannot re-issue an unpaid Pix/boleto cycle (only
+  card refusals are retryable), so a late invoice is paid through a new checkout due today.
+  Paying either the cycle link or the checkout marks the invoice paid; payments are always
+  confirmed by reading the transaction on Calebe Pay (status, amount, mode), never from the
+  event body. If both get paid, the second is logged for a manual refund.
+- **Block:** an invoice still open **5 days** after its due date (`BILLING_GRACE_DAYS`,
+  `packages/rules`) blocks the account (`account_blocked`: only auth, billing and notices
+  stay open) and pauses every group it owns (`group_blocked` for members). While paused no
+  week opens and an open week closes **voided** (compensating `ADJUSTMENT`, no penalty, streaks
+  untouched). Paying unblocks at once; the week opened before the block keeps running,
+  otherwise the group resumes the next Monday (`resumesOnWeek`).
+- **Sync:** Calebe Pay webhooks (`subscription.cycle_created`, `transaction.*`) plus a pull
+  every 10 min and when the person opens the Assinatura page, so it works even without
+  webhooks configured. Status is cached on `subscriptions.status` for the guards.
+- **Screens:** portal `/assinatura` (plan, usage, invoices with Pagar, plan picker with billing
+  data: CPF/CNPJ, phone, address — required by Pix/boleto), late-payment banner, blocked screen,
+  paused-group screen; admin › Planos; app › Perfil › Assinatura.
 
 ## 9. External integrations
 
@@ -431,7 +470,10 @@ the server `.env` by `infra/scripts/setup-server-env.sh` (`vg-segredos`).
 | 12 | First week "start now" | Daily goals count only from the creation day; weekly goals count in full |
 | 13 | Leaving / removal | Effective after the current week closes; open debt stays payable |
 | 14 | E-mail | Resend, credentials in `/admin`; manual password definition by the platform admin meanwhile |
-| 15 | Payments provider | Calebe Pay connected (provider + webhook), no flow charges yet; no CI for now |
+| 15 | Payments provider | Calebe Pay connected (provider + webhook); no CI for now |
+| 16 | Plans | Super-admin defines plans (free included); limits = groups owned and people per group |
+| 17 | Card on plans | No recurring card (would put card data on our server): card via a checkout per invoice |
+| 18 | Late payment | Blocked 5 days after the due date; owner's groups pause (no charges); pay the late invoice to reactivate |
 
 ## 17. Open questions
 
@@ -441,5 +483,8 @@ the server `.env` by `infra/scripts/setup-server-env.sh` (`vg-segredos`).
 3. Pause/vacation (member skips a week, approved by admin) — v1 or later?
 4. Can a member have **personal goals** inside a group (different targets per person),
    or are goals always shared? v1 assumption: shared goals, with per-goal participants.
-5. Publishing the app: which Expo account (company), Apple developer team and Play
-   console; then push notifications (week reminders, payment confirmed) and OTA.
+5. Publishing: Play console account; push notifications (week reminders, payment confirmed) and OTA.
+6. App Store review: Apple requires In-App Purchase for digital subscriptions sold inside
+   iOS apps. The app only shows the plan and links to pay/change on the web — fine for
+   TestFlight internal testing; before a public App Store release, decide between keeping
+   payments web-only (no purchase buttons in iOS) or adding IAP.

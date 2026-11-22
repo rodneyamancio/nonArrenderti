@@ -8,6 +8,10 @@ const PUBLIC_PREFIXES = ['/entrar', '/criar-conta', '/esqueci-senha', '/redefini
 const request = createTransport({
   baseUrl: '/api',
   credentials: 'same-origin',
+  onError: (status, code) => {
+    // Blocked account: send the person to the page where they can pay.
+    if (status === 403 && code === 'account_blocked' && typeof window !== 'undefined' && !window.location.pathname.startsWith('/assinatura')) window.location.href = '/assinatura';
+  },
   onUnauthorized: () => {
     if (typeof window === 'undefined') return;
     const path = window.location.pathname;

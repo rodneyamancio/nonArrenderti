@@ -6,6 +6,8 @@ import { InfraModule } from './common/infra.module';
 import { PrismaService } from './common/prisma.service';
 import { RedisService } from './common/redis.service';
 import { Public } from './modules/auth/auth.guard';
+import { BillingModule } from './modules/billing/billing.module';
+import { AllowBlocked } from './modules/billing/billing.guard';
 import { AuthModule } from './modules/auth/auth.module';
 import { AdminController, PlatformAdminGuard } from './modules/admin/admin.controller';
 import { DomainModule } from './modules/domain/domain.module';
@@ -13,6 +15,7 @@ import { WebhooksController } from './modules/integrations/webhooks.controller';
 import { MailService } from './common/mail.service';
 
 @Controller()
+@AllowBlocked()
 @Public()
 export class HealthController {
   constructor(
@@ -42,7 +45,7 @@ export class HealthController {
 }
 
 @Module({
-  imports: [InfraModule, AuthModule, DomainModule],
+  imports: [InfraModule, AuthModule, BillingModule, DomainModule],
   controllers: [HealthController, AdminController, WebhooksController],
   providers: [{ provide: APP_FILTER, useClass: HttpExceptionFilter }, PlatformAdminGuard],
 })

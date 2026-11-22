@@ -1,6 +1,7 @@
 export * from './dates';
 export * from './goals';
 export * from './pix';
+export * from './billing';
 
 const BRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 
