@@ -11,6 +11,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { SessionProvider, useSessionState } from '@/session/provider';
 import { ToastProvider } from '@/ui/kit';
 import { ThemeProvider, useTheme } from '@/ui/theme-provider';
+import { UpdateBanner } from '@/ui/update-banner';
 
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
@@ -36,5 +37,10 @@ function RootStack() {
   useEffect(() => {
     if (state.status !== 'loading') void SplashScreen.hideAsync().catch(() => undefined);
   }, [state.status]);
-  return <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: c.bg } }} />;
+  return (
+    <>
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: c.bg } }} />
+      <UpdateBanner />
+    </>
+  );
 }

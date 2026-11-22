@@ -13,6 +13,7 @@ import { PageTitle, TopBar } from '@/ui/page-header';
 import { radius } from '@/ui/theme';
 import { useTheme, type ThemePref } from '@/ui/theme-provider';
 import Constants from 'expo-constants';
+import { versionLabel } from '@/session/updates';
 
 export default function ProfileScreen() {
   const { c, pref, setPref } = useTheme();
@@ -151,7 +152,7 @@ export default function ProfileScreen() {
           />
         </Row>
         <T size={12} tone="subtle" center>
-          Tenace {Constants.expoConfig?.version ?? ''} · non arrenderti 💜
+          Tenace {versionLabel(Constants.expoConfig?.version)} · non arrenderti 💜
         </T>
       </Screen>
     </View>

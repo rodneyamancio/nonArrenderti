@@ -334,8 +334,14 @@ invite links are `https://tenace.amancio.family/convite/<token>` (paste in Iníc
 
 EAS project: `@valiant-group-do-brasil/tenace` (bundle `family.amancio.tenace`, Apple team of
 the company). The first iOS build needs an interactive Apple login (`eas build`) and the App
-Store Connect app record (`eas submit` creates it). Not built yet: OTA updates, push
-notifications, universal links, Face ID lock. In the app, invoices are paid on the Calebe
+Store Connect app record (`eas submit` creates it). **OTA (EAS Update):** channels
+`development` / `preview` / `production`, `runtimeVersion` = app version (an update only
+reaches builds of the same version; a new native module = new version + store build). The
+app checks on open/return (max every 30 min), downloads in the background and never
+reloads by itself — a banner offers “Atualizar”. Publish with
+`eas update --channel production --environment production --message "…"` (the
+`--environment` brings `EXPO_PUBLIC_PORTAL_URL` from the EAS environment). Not built yet:
+push notifications, universal links, Face ID lock. In the app, invoices are paid on the Calebe
 Pay page and plans are changed on the portal (App Store rules on digital subscriptions —
 see §17).
 

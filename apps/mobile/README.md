@@ -24,8 +24,21 @@ pnpm --filter @tenace/mobile test         # session, goal rules, links, parity w
 pnpm --filter @tenace/mobile export:ios   # proves the bundle compiles
 ```
 
-## Publish (not done yet)
+## Publish
 
-Needs the company Expo account: `npx eas-cli@latest init` (writes `extra.eas.projectId`), then
-`eas build --profile preview --platform android` (APK) or `--profile production` for the stores.
-Push notifications and OTA updates come after `eas init` (see `docs/spec.md` §8.9).
+EAS project `@valiant-group-do-brasil/tenace` (already linked in `app.json`).
+
+```bash
+npx eas-cli@latest build --platform ios --profile production --auto-submit      # TestFlight (first time: Apple login)
+npx eas-cli@latest build --platform android --profile preview                   # installable APK
+```
+
+## OTA update (JavaScript-only changes)
+
+```bash
+npx eas-cli@latest update --channel production --environment production --message "o que mudou"
+```
+
+Always pass `--environment` (it brings `EXPO_PUBLIC_PORTAL_URL`; without it the bundle could
+carry a local `.env`). Reaches only builds with the same app `version`; native changes need a
+new version and a store build. The app downloads in the background and shows “Atualizar”.

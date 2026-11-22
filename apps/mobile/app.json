@@ -33,6 +33,7 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "blockedPermissions": [
+        "android.permission.RECORD_AUDIO",
         "android.permission.RECORD_AUDIO"
       ],
       "predictiveBackGestureEnabled": false
@@ -78,6 +79,11 @@
       "eas": {
         "projectId": "e78a3a9e-ab45-4d70-a0c7-44580431bb49"
       }
+    },
+    "updates": {
+      "url": "https://u.expo.dev/e78a3a9e-ab45-4d70-a0c7-44580431bb49",
+      "fallbackToCacheTimeout": 0,
+      "checkAutomatically": "ON_LOAD"
     }
   }
 }
