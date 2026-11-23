@@ -23,6 +23,8 @@ import {
   canOwnAnotherGroup,
   planFitProblem,
   planPriceLabel,
+  planKeepSelection,
+  trialActive,
 } from '../src';
 
 const SP = 'America/Sao_Paulo';
@@ -183,5 +185,18 @@ describe('billing', () => {
     expect(planFitProblem({ name: 'Pro', maxGroups: null, maxMembersPerGroup: null }, { groups: 9, largestGroup: 40 })).toBeNull();
     expect(planPriceLabel(1990, 1, (c) => `R$ ${c / 100}`)).toBe('R$ 19.9/mês');
     expect(planPriceLabel(0, 1, String)).toBe('Grátis');
+  });
+  it('runs a trial through its last day', () => {
+    expect(trialActive('2026-12-01', '2026-12-01')).toBe(true);
+    expect(trialActive('2026-12-01', '2026-12-02')).toBe(false);
+    expect(trialActive(null, '2026-12-01')).toBe(false);
+  });
+  it('keeps the active groups first, then the oldest, and never a group over the member limit', () => {
+    const g = (id: string, members: number, planPaused: boolean, createdAt: string) => ({ id, members, planPaused, createdAt });
+    const groups = [g('a', 3, false, '2026-01-01'), g('b', 4, true, '2025-12-01'), g('c', 9, false, '2025-11-01'), g('d', 2, false, '2026-02-01')];
+    expect(planKeepSelection(groups, { maxGroups: 1, maxMembersPerGroup: 5 })).toEqual({ keep: ['a'], pause: ['b', 'c', 'd'] });
+    expect(planKeepSelection(groups, { maxGroups: 3, maxMembersPerGroup: 5 })).toEqual({ keep: ['a', 'd', 'b'], pause: ['c'] });
+    expect(planKeepSelection(groups, null).pause).toEqual([]);
+    expect(planKeepSelection(groups, { maxGroups: 0, maxMembersPerGroup: null }).keep).toEqual([]);
   });
 });

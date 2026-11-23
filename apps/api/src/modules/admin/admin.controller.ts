@@ -1,4 +1,5 @@
 import { Body, CanActivate, Controller, ExecutionContext, Get, HttpCode, Injectable, Param, Patch, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { AuditService } from '../../common/audit.service';
 import { randomToken, sha256 } from '../../common/crypto';
@@ -9,6 +10,7 @@ import { PrismaService } from '../../common/prisma.service';
 import type { AuthedRequest } from '../../common/request';
 import { parseBody } from '../../common/validation';
 import { hashPassword, passwordProblem } from '../auth/password';
+import { BillingService } from '../billing/billing.service';
 import { CalebePayProvider } from '../integrations/calebepay.provider';
 import { INTEGRATION_KEYS, IntegrationsService, isIntegrationKey, updateIntegrationSchema } from '../integrations/integrations.service';
 
@@ -33,6 +35,7 @@ export class AdminController {
     private readonly integrations: IntegrationsService,
     private readonly mail: MailService,
     private readonly envs: EnvService,
+    private readonly billing: BillingService,
   ) {}
 
   @Get('overview')
@@ -62,8 +65,13 @@ export class AdminController {
       where: term ? { OR: [{ email: { contains: term, mode: 'insensitive' } }, { name: { contains: term, mode: 'insensitive' } }] } : {},
       orderBy: { createdAt: 'desc' },
       take: 100,
-      include: { _count: { select: { members: { where: { status: { in: ['active', 'leaving'] } } } } } },
+      include: {
+        _count: { select: { members: { where: { status: { in: ['active', 'leaving'] } } } } },
+        subscription: { select: { status: true, providerSubscriptionId: true, trialUntil: true, plan: { select: { name: true } }, trialPlan: { select: { id: true, name: true } } } },
+      },
     });
+    const defaultPlan = await this.billing.defaultPlan();
+    const today = this.billing.today();
     return {
       users: rows.map((u) => ({
         id: u.id,
@@ -75,6 +83,14 @@ export class AdminController {
         groups: u._count.members,
         createdAt: u.createdAt.toISOString(),
         lastLoginAt: u.lastLoginAt?.toISOString() ?? null,
+        plan: u.subscription?.plan?.name ?? defaultPlan?.name ?? null,
+        paid: !!u.subscription?.providerSubscriptionId,
+        billingStatus: u.subscription?.status ?? 'ok',
+        trial: (() => {
+          const until = u.subscription?.trialUntil?.toISOString().slice(0, 10);
+          const tp = u.subscription?.trialPlan;
+          return tp && until && until >= today ? { planId: tp.id, plan: tp.name, until } : null;
+        })(),
       })),
     };
   }
@@ -121,6 +137,82 @@ export class AdminController {
     const u = await this.prisma.user.findUnique({ where: { id } });
     if (!u) throw new DomainNotFound('not_found', 'Usuário não encontrado');
     return u;
+  }
+
+  // ---------------------------------------------------------------- groups (read-only, platform staff)
+  @Get('groups')
+  async groups(@Query('q') q?: string, @Query('status') status?: string) {
+    const term = (q ?? '').trim().slice(0, 100);
+    const where: Prisma.GroupWhereInput = {
+      ...(term ? { OR: [{ name: { contains: term, mode: 'insensitive' } }, { members: { some: { role: 'owner', user: { OR: [{ name: { contains: term, mode: 'insensitive' } }, { email: { contains: term, mode: 'insensitive' } }] } } } }] } : {}),
+      ...(status === 'archived' ? { archivedAt: { not: null } } : status === 'active' || status === 'paused' ? { archivedAt: null } : {}),
+    };
+    const rows = await this.prisma.group.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: 300,
+      include: {
+        members: { where: { role: 'owner', status: { in: ['active', 'leaving'] } }, select: { userId: true, user: { select: { name: true, email: true } } }, take: 1 },
+        _count: { select: { members: { where: { status: { in: ['active', 'leaving'] } } }, goals: { where: { archivedAt: null } } } },
+      },
+    });
+    const planNames = new Map<string, string | null>();
+    const blocked = new Map<string, boolean>();
+    const out = [];
+    for (const g of rows) {
+      const owner = g.members[0] ?? null;
+      if (owner && !planNames.has(owner.userId)) {
+        planNames.set(owner.userId, (await this.billing.planFor(owner.userId))?.name ?? null);
+        blocked.set(owner.userId, await this.billing.isUserBlocked(owner.userId));
+      }
+      const state = g.archivedAt ? 'archived' : g.billingPausedAt || (owner && blocked.get(owner.userId)) ? 'paused_billing' : g.planPausedAt ? 'paused_plan' : 'active';
+      if (status === 'paused' && !state.startsWith('paused')) continue;
+      if (status === 'active' && state !== 'active') continue;
+      out.push({
+        id: g.id,
+        name: g.name,
+        emoji: g.emoji,
+        color: g.color,
+        createdAt: g.createdAt.toISOString(),
+        archivedAt: g.archivedAt?.toISOString() ?? null,
+        owner: owner ? { id: owner.userId, name: owner.user.name, email: owner.user.email } : null,
+        ownerPlan: owner ? (planNames.get(owner.userId) ?? null) : null,
+        members: g._count.members,
+        goals: g._count.goals,
+        state,
+      });
+    }
+    return { groups: out, total: out.length };
+  }
+
+  @Get('groups/:id')
+  async group(@Req() req: AuthedRequest, @Param('id') id: string) {
+    const g = await this.prisma.group.findUnique({
+      where: { id },
+      include: {
+        members: { where: { status: { in: ['active', 'leaving'] } }, include: { user: { select: { name: true, email: true, avatarColor: true } } }, orderBy: [{ role: 'asc' }, { joinedAt: 'asc' }] },
+        goals: { where: { archivedAt: null }, orderBy: { createdAt: 'asc' } },
+      },
+    });
+    if (!g) throw new DomainNotFound('not_found', 'Grupo não encontrado');
+    const [weeksClosed, lastWeek] = await Promise.all([
+      this.prisma.week.count({ where: { groupId: g.id, status: 'closed' } }),
+      this.prisma.week.findFirst({ where: { groupId: g.id }, orderBy: { weekStart: 'desc' }, select: { weekStart: true, status: true } }),
+    ]);
+    await this.audit.log(req, 'view', 'group', g.id);
+    return {
+      id: g.id,
+      name: g.name,
+      emoji: g.emoji,
+      description: g.description,
+      timezone: g.timezone,
+      startsOn: g.startsOn.toISOString().slice(0, 10),
+      createdAt: g.createdAt.toISOString(),
+      weeksClosed,
+      lastWeek: lastWeek ? { weekStart: lastWeek.weekStart.toISOString().slice(0, 10), status: lastWeek.status } : null,
+      members: g.members.map((m) => ({ id: m.id, userId: m.userId, name: m.user.name, email: m.user.email, avatarColor: m.user.avatarColor, role: m.role, status: m.status, joinedAt: m.joinedAt.toISOString(), streak: m.streak })),
+      goals: g.goals.map((x) => ({ id: x.id, name: x.name, emoji: x.emoji, period: x.period, target: x.target, unit: x.unit, stakeCents: x.stakeCents, slotsPerWeek: x.slotsPerWeek })),
+    };
   }
 
   // ---------------------------------------------------------------- integrations

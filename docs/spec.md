@@ -170,7 +170,14 @@ admin from `SEED_ADMIN_*`.
 
 - **Users:** search, **define a password manually** (ends that user's sessions), generate a
   single-use **reset link** (24 h) to send by WhatsApp, block/unblock (blocking ends sessions),
-  promote/demote platform admin (never yourself).
+  promote/demote platform admin (never yourself). Each row shows the person's plan and a
+  running trial; **Dar trial** grants one (§8.10).
+- **Groups:** every group (`GET /admin/groups`, search by group name, owner name or e-mail;
+  filter active / paused / archived) with owner, owner's effective plan, people, goals,
+  created date and state (active, paused by late payment, paused by plan, archived).
+  Opening a row shows members (role, since, streak) and active goals — **read-only**
+  (`GET /admin/groups/:id`, audited as `view`). Platform staff never enter a group: these
+  routes live under `/admin` with `PlatformAdminGuard`, outside the `GroupGuard` tree.
 - **Integrations:** Resend and Calebe Pay — config + write-only secrets, encrypted in the
   database (AES-256-GCM bound to the integration key, `ENCRYPTION_KEY`), shown only as a hint
   (`cp_test_…1234`); "send test e-mail" / "test connection".
@@ -388,6 +395,24 @@ see §17).
 - **Sync:** Calebe Pay webhooks (`subscription.cycle_created`, `transaction.*`) plus a pull
   every 10 min and when the person opens the Assinatura page, so it works even without
   webhooks configured. Status is cached on `subscriptions.status` for the guards.
+- **Trial (granted by platform staff):** Admin › Usuários › Dar trial picks a plan (usually
+  paid) and a last day (presets 7/14/30/90 days or a date, up to 366 days). Until that day
+  (inclusive) the person's **effective plan** is the trial plan, for free (`planFor`: trial →
+  subscribed plan → default). Granting again replaces the trial; "Encerrar trial" ends it now.
+  Subscribing during a trial bills the **first cycle the day after the trial**. Notices:
+  on grant, 3 days before the end, and at the end. The billing tick ends expired trials.
+- **Groups over the plan (`planPausedAt`):** whenever the effective plan changes (trial
+  start/end, plan change) or a slot frees up (group archived, member removed from a paused
+  group), `enforcePlan` keeps active only what the plan covers: groups over the per-group
+  member limit cannot stay active; among the rest, the ones already active win (so the
+  owner's choice sticks), then the oldest. The rest are **paused by plan**: no week opens,
+  an open week closes voided (same as the billing pause), members are notified and the feed
+  says so. Unlike the billing pause, a plan-paused group stays **readable** (no
+  `group_blocked`) so the owner can remove people; check-ins are hidden. The owner picks
+  which groups stay active in `/assinatura` (`POST /me/billing/active-groups`, exactly as
+  many as the plan covers); a resumed group counts again from the next Monday (or keeps the
+  week still open). Removing someone from a plan-paused group ends the membership at once
+  (no week is charged there).
 - **Screens:** portal `/assinatura` (plan, usage, invoices with Pagar, plan picker with billing
   data: CPF/CNPJ, phone, address — required by Pix/boleto), late-payment banner, blocked screen,
   paused-group screen; admin › Planos; app › Perfil › Assinatura.
@@ -505,6 +530,7 @@ the server `.env` by `infra/scripts/setup-server-env.sh` (`vg-segredos`).
 | 16 | Plans | Super-admin defines plans (free included); limits = groups owned and people per group |
 | 17 | Card on plans | No recurring card (would put card data on our server): card via a checkout per invoice |
 | 18 | Late payment | Blocked 5 days after the due date; owner's groups pause (no charges); pay the late invoice to reactivate |
+| 19 | Trials | Granted by platform staff (plan + last day). At the end, groups over the plan pause and the owner chooses which stay active; subscribing during a trial bills from the day after it |
 
 ## 17. Open questions
 

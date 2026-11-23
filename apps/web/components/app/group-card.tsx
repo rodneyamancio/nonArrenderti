@@ -78,6 +78,17 @@ export function GroupCard({ data }: { data: OverviewGroup }) {
           <div className="rounded-lg bg-warning-soft px-4 py-3 text-sm">
             <strong>Grupo pausado.</strong> A assinatura de quem criou o grupo está em atraso. Ninguém é cobrado até a reativação.
           </div>
+        ) : data.planPaused ? (
+          <div className="rounded-lg bg-warning-soft px-4 py-3 text-sm">
+            <strong>Grupo pausado.</strong>{' '}
+            {data.role === 'owner' ? (
+              <>
+                Seu plano não cobre este grupo. <Link href="/assinatura" className="font-semibold underline">Escolha os grupos ativos</Link> ou mude de plano.
+              </>
+            ) : (
+              'O plano de quem criou o grupo não cobre mais este grupo. Ninguém é cobrado até a reativação.'
+            )}
+          </div>
         ) : !data.charged ? (
           <div className="rounded-lg bg-muted px-4 py-3 text-sm">
             {week.status === 'not_started' ? (

@@ -63,7 +63,7 @@ export default function GroupLayout({ children }: { children: React.ReactNode })
               {group.memberCount} {group.memberCount === 1 ? 'pessoa' : 'pessoas'} · dinheiro vai para {group.destination.label}
             </p>
           </div>
-          <button type="button" onClick={() => openCheckIn({ groupId: group.id })} className="hidden h-11 shrink-0 items-center gap-2 rounded-md bg-white px-4 text-sm font-bold text-[#17142B] shadow-md sm:inline-flex">
+          <button type="button" onClick={() => openCheckIn({ groupId: group.id })} className={cx('hidden h-11 shrink-0 items-center gap-2 rounded-md bg-white px-4 text-sm font-bold text-[#17142B] shadow-md', !group.planPaused && 'sm:inline-flex')}>
             <Plus className="h-4 w-4" aria-hidden /> Registrar
           </button>
         </div>
@@ -81,6 +81,25 @@ export default function GroupLayout({ children }: { children: React.ReactNode })
           })}
         </div>
       </nav>
+      {group.planPaused && (
+        <div role="status" className="mb-5 flex items-start gap-3 rounded-lg border border-warning/30 bg-warning-soft px-4 py-3 text-sm">
+          <PauseCircle className="mt-0.5 h-5 w-5 shrink-0 text-warning" aria-hidden />
+          <p>
+            <strong>Grupo pausado.</strong>{' '}
+            {group.me.role === 'owner' ? (
+              <>
+                Seu plano não cobre este grupo: as semanas estão paradas e ninguém é cobrado.{' '}
+                <Link href="/assinatura" className="font-semibold underline">
+                  Escolha os grupos ativos
+                </Link>{' '}
+                ou mude de plano.
+              </>
+            ) : (
+              'O plano de quem criou o grupo não cobre mais este grupo. As semanas estão paradas e ninguém é cobrado até a reativação.'
+            )}
+          </p>
+        </div>
+      )}
       {children}
     </GroupCtx.Provider>
   );

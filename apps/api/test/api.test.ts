@@ -481,6 +481,88 @@ describe('plans, subscriptions and the block (Calebe Pay faked)', () => {
     expect(ok.data.config.costCenterId).toBe('cc_f215b67862fb6aa5ab69cdbf22f5af1a');
   });
 
+  describe('trials granted by the admin, and groups over the plan', () => {
+    const newGroup = (name: string) => ({ name, emoji: '🏃', color: 'mint', timezone: 'America/Sao_Paulo', startMode: 'next', destination: { label: 'Caixa', holderName: '', pixKeyType: null, pixKey: '', bankInfo: '', city: '' }, goals: [{ name: 'Correr', emoji: '🏃', period: 'weekly', target: 2, unit: 'times', stakeCents: 500, activeWeekdays: [1, 2, 3, 4, 5, 6, 7] }] });
+    const billing = () => app.get((nodeRequire(DIST + 'modules/billing/billing.service.js') as typeof import('../src/modules/billing/billing.service')).BillingService);
+    let carlaId = '';
+    let g1 = '';
+    let g2 = '';
+
+    it('only the admin grants a trial; the user gets the plan limits for free', async () => {
+      const { addDays } = await import('@tenace/rules');
+      carlaId = (await prisma().user.findUniqueOrThrow({ where: { email: 'carla@test.dev' } })).id;
+      expect((await carla.req('PUT', `/admin/users/${carlaId}/trial`, { planId: proId, until: addDays(today, 10) })).status).toBe(404);
+      expect((await boss.req('PUT', `/admin/users/${carlaId}/trial`, { planId: proId, until: addDays(today, -1) })).status).toBe(400);
+      expect((await boss.req('PUT', `/admin/users/${carlaId}/trial`, { planId: proId, until: addDays(today, 10) })).status).toBe(200);
+      const view = await carla.get('/me/billing');
+      expect(view.data).toMatchObject({ plan: { name: 'Pro' }, trial: { plan: { name: 'Pro' }, until: addDays(today, 10), daysLeft: 11 } });
+      g1 = (await carla.post('/groups', newGroup('Corrida'))).data.id;
+      const second = await carla.post('/groups', newGroup('Natação'));
+      expect(second.status).toBe(201);
+      g2 = second.data.id;
+      const users = await boss.get('/admin/users?q=carla');
+      expect(users.data.users[0]).toMatchObject({ plan: 'Grátis', trial: { plan: 'Pro', until: addDays(today, 10) } });
+    });
+
+    it('when the trial ends, groups over the plan pause (oldest stays) and stay readable', async () => {
+      const { addDays } = await import('@tenace/rules');
+      await prisma().subscription.update({ where: { userId: carlaId }, data: { trialUntil: new Date(`${addDays(today, -1)}T00:00:00Z`) } });
+      await billing().tick();
+      const view = await carla.get('/me/billing');
+      expect(view.data.plan.name).toBe('Grátis');
+      expect(view.data.trial).toBeNull();
+      expect(view.data.ownedGroups.map((g: { id: string; planPaused: boolean }) => [g.id, g.planPaused])).toEqual([[g1, false], [g2, true]]);
+      const detail = await carla.get(`/groups/${g2}`);
+      expect(detail.status).toBe(200);
+      expect(detail.data.planPaused).toBe(true);
+      const ov = await carla.get('/me/overview');
+      expect(ov.data.groups.find((g: { group: { id: string } }) => g.group.id === g2)).toMatchObject({ planPaused: true, blocked: false, checkinGoals: [] });
+      const notes = await prisma().notification.findMany({ where: { userId: carlaId, type: { in: ['trial_ended', 'groups_paused_plan'] } } });
+      expect(notes.map((n) => n.type).sort()).toEqual(['groups_paused_plan', 'trial_ended']);
+      const goalId = (await prisma().goal.findFirstOrThrow({ where: { groupId: g2 } })).id;
+      expect((await carla.post(`/groups/${g2}/checkins`, { goalId, date: today, quantity: 1 })).data.message).toMatch(/pausado/);
+      // A paused group cannot be dodged by creating another one.
+      expect((await carla.post('/groups', newGroup('Terceiro'))).data.code).toBe('plan_limit');
+    });
+
+    it('the owner picks which group stays active', async () => {
+      expect((await carla.post('/me/billing/active-groups', { groupIds: [g1, g2] })).status).toBe(400);
+      const r = await carla.post('/me/billing/active-groups', { groupIds: [g2] });
+      expect(r.status).toBe(200);
+      expect(r.data.ownedGroups.map((g: { id: string; planPaused: boolean }) => [g.id, g.planPaused])).toEqual([[g1, true], [g2, false]]);
+      const resumed = await prisma().group.findUniqueOrThrow({ where: { id: g2 } });
+      expect(resumed.planPausedAt).toBeNull();
+      expect(resumed.resumesOnWeek).toBeTruthy(); // back on a Monday, never mid-week
+      // The choice sticks on the next enforcement.
+      await billing().enforcePlan(carlaId);
+      expect((await prisma().group.findUniqueOrThrow({ where: { id: g1 } })).planPausedAt).toBeTruthy();
+    });
+
+    it('subscribing during a trial bills from the day after the trial', async () => {
+      const { addDays } = await import('@tenace/rules');
+      fake.cycleDue = null; // the block test above left a late cycle in the fake
+      await boss.req('PUT', `/admin/users/${carlaId}/trial`, { planId: proId, until: addDays(today, 5) });
+      expect((await prisma().group.findUniqueOrThrow({ where: { id: g1 } })).planPausedAt).toBeNull(); // trial covers both again
+      const r = await carla.post('/me/billing/subscribe', { planId: proId, method: 'pix', profile });
+      expect(r.status).toBe(200);
+      expect(fake.created.at(-1)).toMatchObject({ firstDueDate: addDays(today, 6) });
+      expect((await boss.req('DELETE', `/admin/users/${carlaId}/trial`)).status).toBe(200);
+      expect((await carla.get('/me/billing')).data).toMatchObject({ plan: { name: 'Pro' }, trial: null });
+    });
+
+    it('the admin lists every group with owner and plan, and sees members read-only', async () => {
+      expect((await carla.get('/admin/groups')).status).toBe(404);
+      const list = await boss.get('/admin/groups?q=carla@test');
+      expect(list.data.groups.map((g: { name: string }) => g.name).sort()).toEqual(['Corrida', 'Natação']);
+      expect(list.data.groups[0]).toMatchObject({ owner: { email: 'carla@test.dev' }, ownerPlan: 'Pro', members: 1, state: 'active' });
+      expect((await boss.get('/admin/groups')).data.total).toBeGreaterThanOrEqual(3);
+      const one = await boss.get(`/admin/groups/${g1}`);
+      expect(one.data.members).toEqual([expect.objectContaining({ email: 'carla@test.dev', role: 'owner' })]);
+      expect(one.data.goals[0]).toMatchObject({ name: 'Correr', stakeCents: 500 });
+      expect((await boss.get('/admin/groups/nao-existe')).status).toBe(404);
+    });
+  });
+
   it('switching back to the free plan is refused while usage does not fit', async () => {
     const tooBig = await ana.post('/groups', { name: 'Segundo', emoji: '📚', color: 'sky', timezone: 'America/Sao_Paulo', startMode: 'next', destination: { label: 'Caixa', holderName: '', pixKeyType: null, pixKey: '', bankInfo: '', city: '' }, goals: [{ name: 'Ler', emoji: '📚', period: 'weekly', target: 3, unit: 'times', stakeCents: 500, activeWeekdays: [1, 2, 3, 4, 5, 6, 7] }] });
     expect(tooBig.status).toBe(201);

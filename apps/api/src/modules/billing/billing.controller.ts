@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put, Req, UseGuards } from '@nestjs/common';
 import type { BillingView, PlanView } from '@tenace/types';
 import { z } from 'zod';
 import { AuditService } from '../../common/audit.service';
@@ -38,6 +38,8 @@ const profileSchema = z.object({
   }),
 });
 const subscribeSchema = z.object({ planId: z.string().min(1).max(40), method: z.enum(['pix', 'boleto']).optional(), profile: profileSchema.optional() });
+const activeGroupsSchema = z.object({ groupIds: z.array(z.string().min(1).max(40)).max(1000) });
+const trialSchema = z.object({ planId: z.string().min(1).max(40), until: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data no formato AAAA-MM-DD') });
 const paySchema = z.object({ mode: z.enum(['default', 'checkout']).default('default') });
 const planSchema = z.object({
   name: z.string().trim().min(2).max(60),
@@ -75,6 +77,14 @@ export class BillingController {
   async subscribe(@Req() req: AuthedRequest, @Body() body: unknown): Promise<BillingView> {
     const input = parseBody(subscribeSchema, body);
     return this.billing.subscribe(req.user!, input);
+  }
+
+  /** The owner picks which groups stay active when the plan does not cover all of them. */
+  @Post('active-groups')
+  @HttpCode(200)
+  async activeGroups(@Req() req: AuthedRequest, @Body() body: unknown): Promise<BillingView> {
+    const { groupIds } = parseBody(activeGroupsSchema, body);
+    return this.billing.chooseActiveGroups(req.user!.id, groupIds);
   }
 
   @Post('invoices/:invoiceId/pay')
@@ -131,9 +141,26 @@ export class AdminBillingController {
 
   @Get('subscriptions')
   async subscriptions() {
-    const subs = await this.prisma.subscription.findMany({ where: { OR: [{ planId: { not: null } }, { invoices: { some: {} } }] }, include: { user: { select: { name: true, email: true } }, plan: { select: { name: true } } }, orderBy: { updatedAt: 'desc' }, take: 200 });
+    const subs = await this.prisma.subscription.findMany({ where: { OR: [{ planId: { not: null } }, { trialPlanId: { not: null } }, { invoices: { some: {} } }] }, include: { user: { select: { name: true, email: true } }, plan: { select: { name: true } }, trialPlan: { select: { name: true } } }, orderBy: { updatedAt: 'desc' }, take: 200 });
     return {
-      subscriptions: subs.map((s) => ({ userId: s.userId, name: s.user.name, email: s.user.email, plan: s.plan?.name ?? null, method: s.method, status: s.status, nextDueDate: s.nextDueDate?.toISOString().slice(0, 10) ?? null, livemode: s.livemode, blockedAt: s.blockedAt?.toISOString() ?? null })),
+      subscriptions: subs.map((s) => ({ userId: s.userId, name: s.user.name, email: s.user.email, plan: s.plan?.name ?? null, method: s.method, status: s.status, nextDueDate: s.nextDueDate?.toISOString().slice(0, 10) ?? null, livemode: s.livemode, blockedAt: s.blockedAt?.toISOString() ?? null, trial: s.trialPlan && s.trialUntil ? { plan: s.trialPlan.name, until: s.trialUntil.toISOString().slice(0, 10) } : null })),
     };
+  }
+
+  /** Trial: a plan's limits, free, through `until` (inclusive). Replaces a running trial. */
+  @Put('users/:userId/trial')
+  async grantTrial(@Req() req: AuthedRequest, @Param('userId') userId: string, @Body() body: unknown) {
+    const input = parseBody(trialSchema, body);
+    if (!(await this.prisma.user.findUnique({ where: { id: userId }, select: { id: true } }))) throw new DomainNotFound('not_found', 'Usuário não encontrado');
+    await this.billing.grantTrial(req.user!.id, userId, input);
+    await this.audit.log(req, 'trial_grant', 'user', userId, input);
+    return { ok: true };
+  }
+
+  @Delete('users/:userId/trial')
+  async endTrial(@Req() req: AuthedRequest, @Param('userId') userId: string) {
+    await this.billing.endTrial(userId);
+    await this.audit.log(req, 'trial_end', 'user', userId);
+    return { ok: true };
   }
 }

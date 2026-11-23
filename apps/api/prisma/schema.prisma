@@ -168,6 +168,8 @@ model Group {
   billingPausedAt DateTime?
   /// After a billing pause, weeks resume on this Monday (never mid-week).
   resumesOnWeek   DateTime? @db.Date
+  /// Owner's plan does not cover this group (e.g. a trial ended): no week opens; the owner picks which groups stay active.
+  planPausedAt    DateTime?
 
   members      Member[]
   goals        Goal[]
@@ -549,7 +551,8 @@ model Plan {
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
-  subscriptions Subscription[]
+  subscriptions Subscription[] @relation("SubscriptionPlan")
+  trials        Subscription[] @relation("SubscriptionTrialPlan")
 
   @@map("plans")
 }
@@ -561,7 +564,14 @@ model Subscription {
   user                   User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   /// null = the default plan (free); paid plans always set it.
   planId                 String?
-  plan                   Plan?     @relation(fields: [planId], references: [id], onDelete: SetNull)
+  plan                   Plan?     @relation("SubscriptionPlan", fields: [planId], references: [id], onDelete: SetNull)
+  /// Trial granted by platform staff: this plan's limits, free, through trialUntil (inclusive).
+  trialPlanId            String?
+  trialPlan              Plan?     @relation("SubscriptionTrialPlan", fields: [trialPlanId], references: [id], onDelete: SetNull)
+  trialUntil             DateTime? @db.Date
+  trialGrantedAt         DateTime?
+  trialGrantedById       String?
+  trialReminderSentAt    DateTime?
   method                 String?
   providerSubscriptionId String?   @unique
   /// Persisted BEFORE calling the provider: a retry after a timeout returns the same subscription.
@@ -578,6 +588,7 @@ model Subscription {
   invoices Invoice[]
 
   @@index([status])
+  @@index([trialUntil])
   @@map("subscriptions")
 }
 

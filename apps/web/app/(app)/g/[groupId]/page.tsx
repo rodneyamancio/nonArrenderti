@@ -49,7 +49,7 @@ export default function WeekPage() {
       </div>
 
       {me && (
-        <MyWeek m={me} today={data.today} weekStart={week.weekStart} closed={week.status === 'closed'} onCheckIn={week.status === 'open' ? (goalId) => openCheckIn({ groupId: group.id, goalId }) : undefined} startsOn={group.me.startsOnWeek} />
+        <MyWeek m={me} today={data.today} weekStart={week.weekStart} closed={week.status === 'closed'} onCheckIn={week.status === 'open' && !group.planPaused ? (goalId) => openCheckIn({ groupId: group.id, goalId }) : undefined} startsOn={group.me.startsOnWeek} />
       )}
 
       {others.length > 0 && (

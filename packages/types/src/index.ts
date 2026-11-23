@@ -130,6 +130,8 @@ export interface GroupDetail extends GroupSummary {
   pendingJoinRequests: number;
   pendingPayments: number;
   openContests: number;
+  /** The owner's plan does not cover this group: no week runs until the owner picks it or upgrades. */
+  planPaused: boolean;
 }
 
 export type MemberStatus = 'active' | 'leaving' | 'left' | 'removed';
@@ -239,6 +241,8 @@ export interface OverviewGroup {
   pendingActions: number;
   /** The owner's subscription is blocked: the group is paused and read-only. */
   blocked: boolean;
+  /** The owner's plan does not cover this group: weeks are paused (still readable). */
+  planPaused: boolean;
 }
 
 export type LedgerEntryType = 'COMMITMENT' | 'SLOT_CREDIT' | 'SLOT_REVERSAL' | 'PAYMENT' | 'ADJUSTMENT';
@@ -457,6 +461,20 @@ export interface BillingView {
   /** Calebe Pay configured: paid plans can be subscribed. */
   paymentsReady: boolean;
   profile: BillingProfile | null;
+  /** Trial granted by the team: `plan` above is the trial plan until `until` (inclusive). */
+  trial: { plan: PlanView; until: string; daysLeft: number } | null;
+  /** Groups the user owns, to pick which stay active when the plan does not cover all. */
+  ownedGroups: OwnedGroupView[];
+}
+
+export interface OwnedGroupView {
+  id: string;
+  name: string;
+  emoji: string;
+  members: number;
+  planPaused: boolean;
+  /** Fits the plan's per-group member limit (only those can be active). */
+  fits: boolean;
 }
 
 export const BRAND_COLORS = ['violet', 'spark', 'mint', 'sky', 'rose', 'sun', 'ink'] as const;

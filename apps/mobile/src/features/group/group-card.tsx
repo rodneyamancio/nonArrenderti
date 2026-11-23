@@ -53,6 +53,10 @@ export function GroupCard({ data }: { data: OverviewGroup }) {
           <View style={{ backgroundColor: c.warningSoft, borderRadius: radius.md, padding: 14 }}>
             <T size={14}>Grupo pausado: a assinatura de quem criou o grupo está em atraso. Ninguém é cobrado até a reativação.</T>
           </View>
+        ) : data.planPaused ? (
+          <Pressable onPress={data.role === 'owner' ? () => router.push('/assinatura') : undefined} style={{ backgroundColor: c.warningSoft, borderRadius: radius.md, padding: 14 }}>
+            <T size={14}>{data.role === 'owner' ? 'Grupo pausado: seu plano não cobre este grupo. Toque para ver a assinatura.' : 'Grupo pausado: o plano de quem criou o grupo não cobre mais este grupo. Ninguém é cobrado até a reativação.'}</T>
+          </Pressable>
         ) : !data.charged ? (
           <View style={{ backgroundColor: c.surfaceSunken, borderRadius: radius.md, padding: 14 }}>
             <T size={14}>

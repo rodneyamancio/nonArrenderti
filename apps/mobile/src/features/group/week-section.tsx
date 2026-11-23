@@ -42,7 +42,7 @@ export function WeekSection({ onInvite }: { onInvite: () => void }) {
         </View>
       </View>
 
-      {me && <MyWeek m={me} today={data.today} weekStart={week.weekStart} closed={week.status === 'closed'} startsOn={group.me.startsOnWeek} onCheckIn={week.status === 'open' ? (goalId) => openCheckIn({ groupId: group.id, goalId }) : undefined} />}
+      {me && <MyWeek m={me} today={data.today} weekStart={week.weekStart} closed={week.status === 'closed'} startsOn={group.me.startsOnWeek} onCheckIn={week.status === 'open' && !group.planPaused ? (goalId) => openCheckIn({ groupId: group.id, goalId }) : undefined} />}
 
       {others.length > 0 && (
         <View style={{ gap: 12 }}>

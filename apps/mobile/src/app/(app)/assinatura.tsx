@@ -1,5 +1,5 @@
 import { errorMessage } from '@tenace/api-client';
-import { BILLING_GRACE_DAYS, planPriceLabel } from '@tenace/rules';
+import { addDays, BILLING_GRACE_DAYS, planPriceLabel } from '@tenace/rules';
 import type { BillingView, InvoiceView } from '@tenace/types';
 import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
@@ -76,7 +76,22 @@ export default function SubscriptionScreen() {
             <Notice tone="warning" title="Mensalidade em atraso">{`Pague em até ${data.daysToBlock} ${data.daysToBlock === 1 ? 'dia' : 'dias'} para evitar o bloqueio da conta e a pausa dos seus grupos.`}</Notice>
           )}
 
-          <Card title="Seu plano">
+          {data.trial && (
+            <Notice tone="info" title={`🎁 Você está testando o plano ${data.trial.plan.name}`}>
+              {`Grátis até ${fmtDay(data.trial.until)} (${data.trial.daysLeft} ${data.trial.daysLeft === 1 ? 'dia' : 'dias'}). ${data.subscription ? 'Depois vale a sua assinatura.' : `Assine no portal e a primeira mensalidade só vence em ${fmtDay(addDays(data.trial.until, 1))}.`}`}
+            </Notice>
+          )}
+          {data.ownedGroups.some((g) => g.planPaused) && (
+            <Notice tone="warning" title="Alguns grupos estão pausados">
+              {`Seu plano não cobre todos os seus grupos: ${data.ownedGroups
+                .filter((g) => g.planPaused)
+                .map((g) => `${g.emoji} ${g.name}`)
+                .join(', ')}. Escolha quais ficam ativos no portal, em Assinatura.`}
+            </Notice>
+          )}
+          {data.ownedGroups.some((g) => g.planPaused) && <Button label="Escolher grupos ativos no portal" variant="outline" icon={ExternalLink} onPress={() => void WebBrowser.openBrowserAsync(`${portalUrl}/assinatura`)} />}
+
+          <Card title={data.trial ? 'Seu plano (em teste)' : 'Seu plano'}>
             {data.plan ? (
               <View style={{ gap: 10 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>

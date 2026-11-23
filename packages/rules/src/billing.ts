@@ -59,3 +59,28 @@ export function planPriceLabel(priceCents: number, intervalMonths: number, forma
   const per = intervalMonths === 1 ? 'mês' : intervalMonths === 12 ? 'ano' : `${intervalMonths} meses`;
   return `${format(priceCents)}/${per}`;
 }
+
+/** A trial runs through `trialUntil` (inclusive, local date). */
+export const trialActive = (trialUntil: string | null | undefined, today: string) => !!trialUntil && today <= trialUntil;
+
+export interface OwnedGroupForPlan {
+  id: string;
+  /** active + leaving members (owner included) */
+  members: number;
+  /** currently paused for being over the plan */
+  planPaused: boolean;
+  createdAt: string; // ISO
+}
+
+/**
+ * Which owned groups stay active under a plan (docs/spec.md §8.10). A group over the
+ * per-group member limit cannot stay active. Among the rest, groups already active win
+ * (that is how the owner's own choice sticks), then the oldest. Pure.
+ */
+export function planKeepSelection(groups: OwnedGroupForPlan[], plan: PlanLimits | null): { keep: string[]; pause: string[] } {
+  const fits = (g: OwnedGroupForPlan) => plan?.maxMembersPerGroup == null || g.members <= plan.maxMembersPerGroup;
+  const eligible = groups.filter(fits).sort((a, b) => Number(a.planPaused) - Number(b.planPaused) || a.createdAt.localeCompare(b.createdAt));
+  const keep = plan?.maxGroups == null ? eligible : eligible.slice(0, Math.max(0, plan.maxGroups));
+  const kept = new Set(keep.map((g) => g.id));
+  return { keep: keep.map((g) => g.id), pause: groups.filter((g) => !kept.has(g.id)).map((g) => g.id) };
+}

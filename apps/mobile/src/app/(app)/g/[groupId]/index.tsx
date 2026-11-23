@@ -82,10 +82,10 @@ export default function GroupScreen() {
               <Pressable onPress={back} accessibilityRole="button" accessibilityLabel="Voltar" hitSlop={8} style={{ width: 44, height: 44, marginLeft: -10, alignItems: 'center', justifyContent: 'center' }}>
                 <ChevronLeft size={28} color="#fff" />
               </Pressable>
-              <Pressable onPress={() => openCheckIn({ groupId: group.id })} accessibilityRole="button" accessibilityLabel="Registrar" style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#fff', borderRadius: radius.md, paddingHorizontal: 14, height: 40, opacity: pressed ? 0.85 : 1 })}>
+              {!group.planPaused && <Pressable onPress={() => openCheckIn({ groupId: group.id })} accessibilityRole="button" accessibilityLabel="Registrar" style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#fff', borderRadius: radius.md, paddingHorizontal: 14, height: 40, opacity: pressed ? 0.85 : 1 })}>
                 <Plus size={18} color="#17142B" />
                 <Text style={{ color: '#17142B', fontWeight: '700', fontSize: 14 }}>Registrar</Text>
-              </Pressable>
+              </Pressable>}
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 14 }}>
               <View style={{ width: 58, height: 58, borderRadius: radius.lg, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' }}>
@@ -122,6 +122,11 @@ export default function GroupScreen() {
               })}
             </View>
           </ScrollView>
+          {group.planPaused && (
+            <Pressable onPress={group.me.role === 'owner' ? () => router.push('/assinatura') : undefined} style={{ marginHorizontal: 16, marginTop: 14, backgroundColor: c.warningSoft, borderRadius: radius.md, padding: 14 }}>
+              <T size={14}>{group.me.role === 'owner' ? 'Grupo pausado: seu plano não cobre este grupo. As semanas estão paradas e ninguém é cobrado. Toque para ver a assinatura.' : 'Grupo pausado: o plano de quem criou o grupo não cobre mais este grupo. Ninguém é cobrado até a reativação.'}</T>
+            </Pressable>
+          )}
 
           <View style={{ padding: 16, gap: 16 }}>
             {current === 'semana' && <WeekSection onInvite={() => setSection('membros')} />}

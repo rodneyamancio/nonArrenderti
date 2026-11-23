@@ -41,6 +41,8 @@ export class CheckInsController {
     const input = parseBody(checkInSchema, body);
     const g = req.group!;
     const me = req.member!;
+    // Plan-paused group: the week does not count (it closes voided), so nothing to register.
+    if (g.planPausedAt) throw new DomainBadRequest('bad_request', 'Grupo pausado: o plano de quem criou o grupo não cobre este grupo agora.');
     const goal = await this.prisma.goal.findFirst({ where: { id: input.goalId, groupId: g.id } });
     if (!goal) throw new DomainNotFound('not_found', 'Meta não encontrada');
     if (goal.archivedAt) throw new DomainBadRequest('goal_archived', 'Esta meta foi encerrada');

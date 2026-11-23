@@ -1,15 +1,18 @@
 'use client';
-import { KeyRound, Link2, Search, ShieldCheck, Wand2 } from 'lucide-react';
+import { addDays, localDate } from '@tenace/rules';
+import type { PlanView } from '@tenace/types';
+import { Gift, KeyRound, Link2, Search, ShieldCheck, Wand2 } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
+import { AdminGroups } from '@/components/app/admin-groups';
 import { AdminPlans } from '@/components/app/admin-plans';
 import { useApp } from '@/components/app/session';
-import { Avatar, Badge, Button, Card, CopyButton, Dialog, ErrorState, Field, Input, Notice, PageHeader, Segmented, Spinner, Stat, Switch, useToast } from '@/components/ui';
+import { Avatar, Badge, Button, Card, CopyButton, Dialog, ErrorState, Field, Input, Notice, PageHeader, Segmented, Select, Spinner, Stat, Switch, useToast } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
-import { fmtDateTime, timeAgo } from '@/lib/format';
+import { fmtDateTime, fmtDay, timeAgo } from '@/lib/format';
 import { useApi } from '@/lib/use-api';
 
-type Tab = 'usuarios' | 'planos' | 'integracoes' | 'sistema';
+type Tab = 'usuarios' | 'grupos' | 'planos' | 'integracoes' | 'sistema';
 
 export default function AdminPage() {
   return (
@@ -27,19 +30,21 @@ function Admin() {
   if (user.role !== 'platform_admin') return <Notice tone="warning">Área restrita à administração da plataforma.</Notice>;
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader title="Administração" description="Usuários, planos, integrações e saúde da plataforma." />
+      <PageHeader title="Administração" description="Usuários, grupos, planos, integrações e saúde da plataforma." />
       <Segmented
         label="Seções"
         value={tab}
         onChange={(t) => router.replace(`/admin${t === 'usuarios' ? '' : `?tab=${t}`}`, { scroll: false })}
         options={[
           { value: 'usuarios', label: 'Usuários' },
+          { value: 'grupos', label: 'Grupos' },
           { value: 'planos', label: 'Planos' },
           { value: 'integracoes', label: 'Integrações' },
           { value: 'sistema', label: 'Sistema' },
         ]}
       />
       {tab === 'usuarios' && <Users />}
+      {tab === 'grupos' && <AdminGroups />}
       {tab === 'planos' && <AdminPlans />}
       {tab === 'integracoes' && <Integrations />}
       {tab === 'sistema' && <System />}
@@ -58,6 +63,10 @@ interface AdminUser {
   groups: number;
   createdAt: string;
   lastLoginAt: string | null;
+  plan: string | null;
+  paid: boolean;
+  billingStatus: string;
+  trial: { planId: string; plan: string; until: string } | null;
 }
 
 function Users() {
@@ -68,6 +77,7 @@ function Users() {
   const { data, error, reload } = useApi<{ users: AdminUser[] }>(`/admin/users${query ? `?q=${encodeURIComponent(query)}` : ''}`);
   const [pwFor, setPwFor] = useState<AdminUser | null>(null);
   const [link, setLink] = useState<{ user: AdminUser; url: string } | null>(null);
+  const [trialFor, setTrialFor] = useState<AdminUser | null>(null);
 
   async function patch(u: AdminUser, body: Partial<Pick<AdminUser, 'active' | 'role'>>, ok: string) {
     try {
@@ -113,7 +123,8 @@ function Users() {
                 <Avatar name={u.name} color={u.avatarColor} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-semibold">
-                    {u.name} {u.role === 'platform_admin' && <Badge tone="brand">admin</Badge>} {!u.active && <Badge tone="danger">bloqueado</Badge>}
+                    {u.name} {u.role === 'platform_admin' && <Badge tone="brand">admin</Badge>} {!u.active && <Badge tone="danger">bloqueado</Badge>}{' '}
+                    {u.trial ? <Badge tone="spark">🎁 {u.trial.plan} até {fmtDay(u.trial.until)}</Badge> : u.plan && <Badge tone={u.paid ? 'success' : 'neutral'}>{u.plan}</Badge>}
                   </p>
                   <p className="truncate text-xs text-muted-foreground">
                     {u.email} · {u.groups} {u.groups === 1 ? 'grupo' : 'grupos'} · {u.lastLoginAt ? `último acesso ${timeAgo(u.lastLoginAt)}` : 'nunca entrou'}
@@ -125,6 +136,9 @@ function Users() {
                   </Button>
                   <Button size="sm" variant="ghost" onClick={() => resetLink(u)}>
                     <Link2 className="h-4 w-4" aria-hidden /> Link
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setTrialFor(u)}>
+                    <Gift className="h-4 w-4" aria-hidden /> {u.trial ? 'Trial' : 'Dar trial'}
                   </Button>
                   {u.id !== me.id && (
                     <>
@@ -143,6 +157,7 @@ function Users() {
         </Card>
       )}
       <PasswordDialog user={pwFor} onClose={() => setPwFor(null)} />
+      <TrialDialog user={trialFor} onClose={() => setTrialFor(null)} onDone={() => void reload()} />
       <Dialog open={!!link} onClose={() => setLink(null)} title="Link de redefinição" description={link ? `Mande para ${link.user.name}. Vale 24 horas e só pode ser usado uma vez.` : undefined}>
         {link && (
           <div className="flex gap-2">
@@ -152,6 +167,104 @@ function Users() {
         )}
       </Dialog>
     </div>
+  );
+}
+
+const PRESETS = [7, 14, 30, 90];
+
+/** Trial: a plan's limits for free until a date (inclusive). Granting again replaces it. */
+function TrialDialog({ user, onClose, onDone }: { user: AdminUser | null; onClose: () => void; onDone: () => void }) {
+  const toast = useToast();
+  const plans = useApi<{ plans: (PlanView & { subscribers: number })[] }>(user ? '/admin/plans' : null);
+  const today = localDate(new Date(), 'America/Sao_Paulo');
+  const [planId, setPlanId] = useState('');
+  const [until, setUntil] = useState(addDays(today, 29));
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState<'save' | 'end' | null>(null);
+  const paidPlans = (plans.data?.plans ?? []).filter((p) => p.priceCents > 0);
+  const chosen = planId || user?.trial?.planId || paidPlans[0]?.id || '';
+  const days = Math.round((Date.parse(`${until}T12:00:00Z`) - Date.parse(`${today}T12:00:00Z`)) / 86_400_000) + 1;
+  const close = () => {
+    setPlanId('');
+    setUntil(addDays(today, 29));
+    setErr('');
+    onClose();
+  };
+  async function run(kind: 'save' | 'end') {
+    if (!user) return;
+    setBusy(kind);
+    setErr('');
+    try {
+      if (kind === 'save') await api(`/admin/users/${user.id}/trial`, { method: 'PUT', body: { planId: chosen, until } });
+      else await api(`/admin/users/${user.id}/trial`, { method: 'DELETE' });
+      toast(kind === 'save' ? `Trial de ${user.name.split(' ')[0]} ativado até ${fmtDay(until)}` : 'Trial encerrado');
+      onDone();
+      close();
+    } catch (e) {
+      setErr(errorMessage(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+  return (
+    <Dialog
+      open={!!user}
+      onClose={close}
+      title={`Trial${user ? ` para ${user.name}` : ''}`}
+      description="A pessoa usa os limites do plano escolhido sem pagar até a data final. Depois volta ao plano dela; grupos que passarem do limite pausam e ela escolhe quais ficam."
+      footer={
+        <>
+          {user?.trial && (
+            <Button variant="ghost" className="text-danger" loading={busy === 'end'} onClick={() => confirm('Encerrar o trial agora?') && run('end')}>
+              Encerrar trial
+            </Button>
+          )}
+          <Button onClick={() => run('save')} loading={busy === 'save'} disabled={!chosen || days < 1}>
+            {user?.trial ? 'Atualizar trial' : 'Dar trial'}
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        {err && <Notice tone="danger">{err}</Notice>}
+        {user?.trial && (
+          <Notice tone="info">
+            Em trial do {user.trial.plan} até {fmtDay(user.trial.until)}. Salvar substitui.
+          </Notice>
+        )}
+        {plans.error && !plans.data ? (
+          <ErrorState error={plans.error} onRetry={plans.reload} />
+        ) : !plans.data ? (
+          <Spinner />
+        ) : !paidPlans.length ? (
+          <Notice tone="warning">Crie um plano pago na aba Planos primeiro.</Notice>
+        ) : (
+          <>
+            <Field label="Plano" htmlFor="trial-plan">
+              <Select id="trial-plan" value={chosen} onChange={(e) => setPlanId(e.target.value)}>
+                {paidPlans.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} — {p.maxGroups ?? '∞'} {p.maxGroups === 1 ? 'grupo' : 'grupos'}, {p.maxMembersPerGroup ?? '∞'} pessoas por grupo
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Duração" hint={days >= 1 ? `${days} ${days === 1 ? 'dia' : 'dias'}, até ${fmtDay(until)} (inclusive)` : 'Escolha uma data a partir de hoje'} htmlFor="trial-until">
+              <div className="flex flex-col gap-2">
+                <div className="flex flex-wrap gap-1.5">
+                  {PRESETS.map((d) => (
+                    <Button key={d} type="button" size="sm" variant={days === d ? 'soft' : 'outline'} onClick={() => setUntil(addDays(today, d - 1))}>
+                      {d} dias
+                    </Button>
+                  ))}
+                </div>
+                <Input id="trial-until" type="date" min={today} value={until} onChange={(e) => setUntil(e.target.value)} className="max-w-48" />
+              </div>
+            </Field>
+          </>
+        )}
+      </div>
+    </Dialog>
   );
 }
 

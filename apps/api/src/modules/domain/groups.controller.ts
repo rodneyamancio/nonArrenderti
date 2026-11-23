@@ -48,6 +48,7 @@ export class GroupsController {
     for (const m of memberships) {
       const g = m.group;
       const blocked = !!g.billingPausedAt || (await this.billing.isGroupBlocked(g.id));
+      const planPaused = !blocked && !!g.planPausedAt;
       const weekId = await this.weeks.ensureCurrentWeek(g);
       const ws = this.weeks.currentWeekStart(g);
       const week = weekId ? await this.prisma.week.findUnique({ where: { id: weekId } }) : null;
@@ -71,12 +72,13 @@ export class GroupsController {
         charged: !!mw,
         startsOnWeek: fromDbDate(m.startsOnWeek),
         goals,
-        checkinGoals: blocked ? [] : activeGoals.filter((x) => !x.excludedMemberIds.includes(m.id)).map((x) => ({ id: x.id, name: x.name, emoji: x.emoji, unit: x.unit, period: x.period, target: x.target })),
+        checkinGoals: blocked || planPaused ? [] : activeGoals.filter((x) => !x.excludedMemberIds.includes(m.id)).map((x) => ({ id: x.id, name: x.name, emoji: x.emoji, unit: x.unit, period: x.period, target: x.target })),
         weekBalanceCents: balances.week,
         openDebtCents: -(balances.balance - balances.week),
         memberCount,
         pendingActions: joinReqs + payments + contests,
         blocked,
+        planPaused,
       });
     }
     return { groups };
@@ -149,6 +151,7 @@ export class GroupsController {
       pendingJoinRequests,
       pendingPayments,
       openContests,
+      planPaused: !!g.planPausedAt,
     };
   }
 
@@ -173,6 +176,8 @@ export class GroupsController {
   @NeedGroup('group:group:delete')
   async archive(@Req() req: AuthedRequest) {
     await this.prisma.group.update({ where: { id: req.group!.id }, data: { archivedAt: new Date() } });
+    // A slot in the owner's plan may have freed up for a paused group.
+    await this.billing.enforcePlan(req.user!.id); // only the owner archives
     return { ok: true };
   }
 
@@ -252,12 +257,22 @@ export class GroupsController {
   private async endMembership(req: AuthedRequest, memberId: string, text: string) {
     const m = await this.prisma.member.findUniqueOrThrow({ where: { id: memberId } });
     const current = this.weeks.currentWeekStart(req.group!);
-    const neverCharged = fromDbDate(m.startsOnWeek) > current;
+    // Plan-paused group: no week is charged, so the membership ends now.
+    const neverCharged = fromDbDate(m.startsOnWeek) > current || !!req.group!.planPausedAt;
     await this.prisma.member.update({
       where: { id: memberId },
       data: neverCharged ? { status: 'left', endsAfterWeek: null } : { status: 'leaving', endsAfterWeek: toDbDate(current) },
     });
     await this.notify.feed(req.group!.id, 'member_joined', text, req.member!.id);
+    if (req.group!.planPausedAt) {
+      const owner = await this.ownerId(req.group!.id);
+      if (owner) await this.billing.enforcePlan(owner);
+    }
+  }
+
+  private async ownerId(groupId: string): Promise<string | null> {
+    const o = await this.prisma.member.findFirst({ where: { groupId, role: 'owner', status: { in: ['active', 'leaving'] } }, select: { userId: true } });
+    return o?.userId ?? null;
   }
 
   private async findMember(req: AuthedRequest, memberId: string) {

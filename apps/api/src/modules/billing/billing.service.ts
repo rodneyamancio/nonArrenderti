@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Prisma, type Invoice, type Plan, type Subscription } from '@prisma/client';
-import { addDays, BILLING_GRACE_DAYS, billingState, canAddMember, canOwnAnotherGroup, formatCents, localDate, planFitProblem, weekStartOf } from '@tenace/rules';
-import type { BillingMethod, BillingProfile, BillingStatus, BillingView, InvoiceView, PlanView } from '@tenace/types';
+import { addDays, BILLING_GRACE_DAYS, billingState, canAddMember, canOwnAnotherGroup, formatCents, localDate, planFitProblem, planKeepSelection, trialActive, weekStartOf } from '@tenace/rules';
+import type { BillingMethod, BillingProfile, BillingStatus, BillingView, InvoiceView, OwnedGroupView, PlanView } from '@tenace/types';
 import { EnvService } from '../../common/env.service';
 import { DomainBadRequest, DomainForbidden, DomainNotFound, DomainUnavailable } from '../../common/errors/domain-exceptions';
 import { OutboundError } from '../../common/http';
@@ -18,6 +18,9 @@ const CYCLE_REF = /^(sub_[A-Za-z0-9_-]+):(\d{4}-\d{2}-\d{2})$/;
 const CHECKOUT_REF = /^tinv-([a-z0-9]+)$/;
 
 type SubWithPlan = Subscription & { plan: Plan | null };
+type Group = Awaited<ReturnType<PrismaService['group']['findMany']>>[number];
+const TRIAL_REMINDER_DAYS = 3;
+const MAX_TRIAL_DAYS = 366;
 
 export const planView = (p: Plan): PlanView => ({
   id: p.id,
@@ -73,9 +76,15 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
     return this.prisma.plan.findFirst({ where: { isDefault: true }, orderBy: { createdAt: 'asc' } });
   }
 
+  /** Effective plan: a running trial wins, then the subscribed plan, then the default (free). */
   async planFor(userId: string): Promise<Plan | null> {
-    const sub = await this.prisma.subscription.findUnique({ where: { userId }, include: { plan: true } });
+    const sub = await this.prisma.subscription.findUnique({ where: { userId }, include: { plan: true, trialPlan: true } });
+    if (sub?.trialPlan && this.trialRunning(sub)) return sub.trialPlan;
     return sub?.plan ?? (await this.defaultPlan());
+  }
+
+  private trialRunning(sub: Pick<Subscription, 'trialPlanId' | 'trialUntil'>, now = new Date()): boolean {
+    return !!sub.trialPlanId && trialActive(sub.trialUntil ? fromDbDate(sub.trialUntil) : null, this.today(now));
   }
 
   /** Groups the user owns (active) and the size of the largest one. */
@@ -187,14 +196,16 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
   // ------------------------------------------------------------------ view
   async view(userId: string): Promise<BillingView> {
     const [sub, plans, defaultPlan, usage, ready] = await Promise.all([
-      this.prisma.subscription.findUnique({ where: { userId }, include: { plan: true, invoices: { orderBy: { dueDate: 'desc' }, take: 24 } } }),
+      this.prisma.subscription.findUnique({ where: { userId }, include: { plan: true, trialPlan: true, invoices: { orderBy: { dueDate: 'desc' }, take: 24 } } }),
       this.prisma.plan.findMany({ where: { active: true }, orderBy: [{ sortOrder: 'asc' }, { priceCents: 'asc' }] }),
       this.defaultPlan(),
       this.usage(userId),
       this.payments.isReady(),
     ]);
-    const plan = sub?.plan ?? defaultPlan;
+    const onTrial = !!sub?.trialPlan && this.trialRunning(sub);
+    const plan = onTrial ? sub!.trialPlan : (sub?.plan ?? defaultPlan);
     const today = this.today();
+    const trialUntil = onTrial ? fromDbDate(sub!.trialUntil!) : null;
     const open = (sub?.invoices ?? []).map((i) => ({ dueDate: fromDbDate(i.dueDate), status: i.status }));
     const state = billingState(open, today);
     return {
@@ -208,7 +219,119 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
       plans: plans.map(planView),
       paymentsReady: ready,
       profile: (sub?.billingProfile as BillingProfile | null) ?? null,
+      trial: onTrial ? { plan: planView(sub!.trialPlan!), until: trialUntil!, daysLeft: Math.round((Date.parse(`${trialUntil}T12:00:00Z`) - Date.parse(`${today}T12:00:00Z`)) / 86_400_000) + 1 } : null,
+      ownedGroups: await this.ownedGroupViews(userId, plan),
     };
+  }
+
+  private async ownedGroupViews(userId: string, plan: Plan | null): Promise<OwnedGroupView[]> {
+    const groups = await this.ownedGroups(userId);
+    const out: OwnedGroupView[] = [];
+    for (const g of groups.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())) {
+      const members = await this.memberCount(g.id);
+      out.push({ id: g.id, name: g.name, emoji: g.emoji, members, planPaused: !!g.planPausedAt, fits: plan?.maxMembersPerGroup == null || members <= plan.maxMembersPerGroup });
+    }
+    return out;
+  }
+
+  // ------------------------------------------------------------------ plan coverage (trial end, downgrade)
+  /**
+   * Pauses the owned groups the effective plan does not cover and resumes the ones it does
+   * (docs/spec.md §8.10). Groups already active win, so the owner's own choice sticks. Idempotent.
+   */
+  async enforcePlan(userId: string, now = new Date()): Promise<void> {
+    const groups = await this.ownedGroups(userId);
+    if (!groups.length) return;
+    const plan = await this.planFor(userId);
+    const rows = await Promise.all(groups.map(async (g) => ({ id: g.id, members: await this.memberCount(g.id), planPaused: !!g.planPausedAt, createdAt: g.createdAt.toISOString() })));
+    const { keep } = planKeepSelection(rows, plan);
+    await this.applyCoverage(userId, groups, new Set(keep), plan, now);
+  }
+
+  /** The owner picks which groups stay active when the plan does not cover all of them. */
+  async chooseActiveGroups(userId: string, groupIds: string[], now = new Date()): Promise<BillingView> {
+    const groups = await this.ownedGroups(userId);
+    const plan = await this.planFor(userId);
+    const views = await this.ownedGroupViews(userId, plan);
+    const chosen = new Set(groupIds);
+    if ([...chosen].some((id) => !groups.some((g) => g.id === id))) throw new DomainNotFound('not_found', 'Grupo não encontrado');
+    const eligible = views.filter((v) => v.fits);
+    const slots = plan?.maxGroups == null ? eligible.length : Math.min(plan.maxGroups, eligible.length);
+    if (views.some((v) => chosen.has(v.id) && !v.fits)) throw new DomainBadRequest('plan_limit', `Esse grupo tem mais pessoas do que o plano ${plan!.name} permite (${plan!.maxMembersPerGroup}).`, { kind: 'members' });
+    if (chosen.size !== slots) throw new DomainBadRequest('validation_error', `Escolha ${slots} ${slots === 1 ? 'grupo' : 'grupos'}.`);
+    await this.applyCoverage(userId, groups, chosen, plan, now);
+    return this.view(userId);
+  }
+
+  private async applyCoverage(userId: string, groups: Group[], keep: Set<string>, plan: Plan | null, now: Date): Promise<void> {
+    const paused: Group[] = [];
+    for (const g of groups) {
+      if (!keep.has(g.id) && !g.planPausedAt) {
+        await this.prisma.group.update({ where: { id: g.id }, data: { planPausedAt: now } });
+        paused.push(g);
+        const members = await this.prisma.member.findMany({ where: { groupId: g.id, status: { in: ['active', 'leaving'] }, userId: { not: userId } }, select: { userId: true } });
+        await this.notify.users(members.map((m) => m.userId), { groupId: g.id, type: 'group_paused', title: `${g.emoji} ${g.name} está pausado`, body: 'O plano de quem criou o grupo não cobre mais este grupo. As semanas ficam paradas e ninguém é cobrado até a reativação.', link: `/g/${g.id}` });
+        await this.notify.feed(g.id, 'group_paused', 'Grupo pausado: o plano do dono não cobre mais este grupo. Ninguém é cobrado enquanto isso.');
+      }
+      if (keep.has(g.id) && g.planPausedAt) {
+        const ws = weekStartOf(localDate(now, g.timezone));
+        const current = await this.prisma.week.findUnique({ where: { groupId_weekStart: { groupId: g.id, weekStart: toDbDate(ws) } }, select: { status: true } });
+        // A week still open keeps running; otherwise the group resumes next Monday (never mid-week).
+        const running = current?.status === 'open';
+        await this.prisma.group.update({ where: { id: g.id }, data: { planPausedAt: null, resumesOnWeek: running ? null : toDbDate(addDays(ws, 7)) } });
+        const members = await this.prisma.member.findMany({ where: { groupId: g.id, status: { in: ['active', 'leaving'] }, userId: { not: userId } }, select: { userId: true } });
+        const when = running ? 'A semana atual continua valendo.' : `As metas voltam a contar na segunda, ${shortDate(addDays(ws, 7))}.`;
+        await this.notify.users(members.map((m) => m.userId), { groupId: g.id, type: 'group_resumed', title: `${g.emoji} ${g.name} foi reativado`, body: when, link: `/g/${g.id}` });
+        await this.notify.feed(g.id, 'group_resumed', `Grupo reativado! ${when}`);
+      }
+    }
+    if (paused.length) {
+      const limit = plan?.maxGroups == null ? '' : ` O plano ${plan.name} cobre ${plan.maxGroups} ${plan.maxGroups === 1 ? 'grupo' : 'grupos'}${plan.maxMembersPerGroup != null ? ` de até ${plan.maxMembersPerGroup} pessoas` : ''}.`;
+      await this.notify.users([userId], { type: 'groups_paused_plan', title: paused.length === 1 ? `${paused[0]!.emoji} ${paused[0]!.name} foi pausado` : `${paused.length} grupos foram pausados`, body: `Seu plano não cobre todos os seus grupos.${limit} Escolha quais ficam ativos ou mude de plano.`, link: '/assinatura' });
+      this.logger.log(`plan pause user=${userId} paused=${paused.length}`);
+    }
+  }
+
+  // ------------------------------------------------------------------ trials (platform staff)
+  async grantTrial(adminId: string, userId: string, input: { planId: string; until: string }, now = new Date()): Promise<void> {
+    const plan = await this.prisma.plan.findUnique({ where: { id: input.planId } });
+    if (!plan) throw new DomainNotFound('not_found', 'Plano não encontrado');
+    const today = this.today(now);
+    if (input.until < today) throw new DomainBadRequest('validation_error', 'A data final do teste já passou.');
+    if (input.until > addDays(today, MAX_TRIAL_DAYS)) throw new DomainBadRequest('validation_error', `O teste pode durar no máximo ${MAX_TRIAL_DAYS} dias.`);
+    const data = { trialPlanId: plan.id, trialUntil: toDbDate(input.until), trialGrantedAt: now, trialGrantedById: adminId, trialReminderSentAt: null };
+    await this.prisma.subscription.upsert({ where: { userId }, create: { userId, ...data }, update: data });
+    await this.notify.users([userId], { type: 'trial_granted', title: `Você ganhou o plano ${plan.name} 🎁`, body: `Use à vontade até ${shortDate(input.until)}, sem pagar nada.`, link: '/assinatura' });
+    await this.enforcePlan(userId, now);
+  }
+
+  async endTrial(userId: string, now = new Date()): Promise<void> {
+    const sub = await this.prisma.subscription.findUnique({ where: { userId }, include: { trialPlan: true } });
+    if (!sub?.trialPlanId) throw new DomainBadRequest('bad_request', 'Esta pessoa não está em teste.');
+    await this.prisma.subscription.update({ where: { id: sub.id }, data: { trialPlanId: null } });
+    await this.notify.users([userId], { type: 'trial_ended', title: sub.trialPlan ? `Seu teste do plano ${sub.trialPlan.name} terminou` : 'Seu teste terminou', body: 'Agora vale o seu plano atual. Veja as opções em Assinatura.', link: '/assinatura' });
+    await this.enforcePlan(userId, now);
+  }
+
+  /** Tick: reminders a few days before, and the end of trials whose last day has passed. */
+  private async processTrials(now: Date): Promise<void> {
+    const today = this.today(now);
+    const ended = await this.prisma.subscription.findMany({ where: { trialPlanId: { not: null }, trialUntil: { lt: toDbDate(today) } }, select: { userId: true } });
+    for (const s of ended) await this.endTrial(s.userId, now).catch((e) => this.logger.error(`end trial ${s.userId}: ${(e as Error).message}`));
+    const soon = await this.prisma.subscription.findMany({
+      where: { trialPlanId: { not: null }, trialReminderSentAt: null, trialUntil: { gte: toDbDate(today), lte: toDbDate(addDays(today, TRIAL_REMINDER_DAYS - 1)) } },
+      include: { trialPlan: true, plan: true },
+    });
+    for (const s of soon) {
+      await this.prisma.subscription.update({ where: { id: s.id }, data: { trialReminderSentAt: now } });
+      const paid = !!s.providerSubscriptionId;
+      await this.notify.users([s.userId], {
+        type: 'trial_ending',
+        title: `Seu teste do plano ${s.trialPlan!.name} acaba em ${shortDate(fromDbDate(s.trialUntil!))}`,
+        body: paid ? `Depois disso vale a sua assinatura do plano ${s.plan?.name ?? ''}.` : 'Assine agora e a primeira mensalidade só vence quando o teste acabar.',
+        link: '/assinatura',
+      });
+    }
   }
 
   private invoiceView(i: Invoice, today: string): InvoiceView {
@@ -222,6 +345,8 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
     if (!plan || !plan.active) throw new DomainNotFound('not_found', 'Plano não encontrado');
     const sub = await this.prisma.subscription.findUnique({ where: { userId: user.id }, include: { plan: true, invoices: { where: { status: 'open' } } } });
     const today = this.today();
+    // Subscribing during a trial: the first cycle is due the day after the trial's last day.
+    const afterTrial = sub && this.trialRunning(sub) ? addDays(fromDbDate(sub.trialUntil!), 1) : null;
     const current = sub?.plan ?? (await this.defaultPlan());
     if (current?.id === plan.id && (plan.priceCents === 0 || sub?.providerSubscriptionId)) throw new DomainBadRequest('bad_request', 'Você já está neste plano.');
     if (sub?.invoices.some((i) => fromDbDate(i.dueDate) < today)) throw new DomainForbidden('account_blocked', 'Pague a mensalidade em atraso antes de mudar de plano.');
@@ -240,13 +365,14 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
           update: { planId: plan.id, method: null, providerSubscriptionId: null, providerIdempotencyKey: null, nextDueDate: null, status: 'ok', blockedAt: null },
         }),
       ]);
+      await this.enforcePlan(user.id);
       return this.view(user.id);
     }
 
     if (!input.method || !input.profile) throw new DomainBadRequest('validation_error', 'Informe a forma de pagamento e os dados de cobrança.');
     // Current period already paid → the new plan bills from the next due date; otherwise from today.
     const nextDue = sub?.nextDueDate ? fromDbDate(sub.nextDueDate) : null;
-    const firstDue = sub?.providerSubscriptionId && !sub.invoices.length && nextDue && nextDue > today ? nextDue : today;
+    const firstDue = afterTrial ?? (sub?.providerSubscriptionId && !sub.invoices.length && nextDue && nextDue > today ? nextDue : today);
     if (sub?.providerSubscriptionId) await this.cancelProvider(provider!, sub.providerSubscriptionId);
     if (sub) await this.prisma.invoice.updateMany({ where: { subscriptionId: sub.id, status: 'open' }, data: { status: 'void' } });
 
@@ -279,6 +405,7 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
       data: { planId: plan.id, method: input.method, providerSubscriptionId: info.id, livemode: info.livemode, nextDueDate: info.nextDueDate ? toDbDate(info.nextDueDate) : null, providerIdempotencyKey: null },
     });
     await this.syncUser(user.id).catch((e) => this.logger.warn(`sync after subscribe: ${(e as Error).message}`));
+    await this.enforcePlan(user.id);
     return this.view(user.id);
   }
 
@@ -454,6 +581,7 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
           select: { userId: true },
         });
         for (const s of subs) await this.syncUser(s.userId).catch((e) => this.logger.error(`sync ${s.userId}: ${(e as Error).message}`));
+        await this.processTrials(now);
       } finally {
         await this.prisma.$queryRaw`SELECT pg_advisory_unlock(${LOCK_KEY})`;
       }

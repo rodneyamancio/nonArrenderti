@@ -1,7 +1,7 @@
 'use client';
-import { BILLING_GRACE_DAYS, planPriceLabel } from '@tenace/rules';
+import { addDays, BILLING_GRACE_DAYS, planPriceLabel } from '@tenace/rules';
 import type { BillingMethod, BillingProfile, BillingView, InvoiceView, PlanView } from '@tenace/types';
-import { Check, CreditCard, ExternalLink, QrCode, Receipt } from 'lucide-react';
+import { Check, CreditCard, ExternalLink, Gift, PauseCircle, QrCode, Receipt } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useState } from 'react';
 import { useApp } from '@/components/app/session';
@@ -73,8 +73,15 @@ function Subscription() {
         </Notice>
       )}
 
+      {data.trial && (
+        <Notice tone="info" title={`🎁 Você está testando o plano ${data.trial.plan.name}`}>
+          Grátis até {fmtDay(data.trial.until)} ({data.trial.daysLeft} {data.trial.daysLeft === 1 ? 'dia' : 'dias'}). {data.subscription ? 'Depois vale a sua assinatura.' : `Assine agora e a primeira mensalidade só vence em ${fmtDay(addDays(data.trial.until, 1))}.`}
+        </Notice>
+      )}
+      {data.ownedGroups.some((g) => g.planPaused) && <ActiveGroups data={data} onDone={(v) => setData(v)} />}
+
       <div className="grid gap-4 md:grid-cols-[1.2fr_1fr]">
-        <Card title="Seu plano">
+        <Card title={data.trial ? 'Seu plano (em teste)' : 'Seu plano'}>
           {plan ? (
             <div className="flex flex-col gap-3">
               <div className="flex items-baseline justify-between gap-3">
@@ -135,13 +142,19 @@ function Subscription() {
         {!data.paymentsReady && <Notice tone="info">Os planos pagos ficam disponíveis assim que os pagamentos forem ativados.</Notice>}
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {data.plans.map((p) => {
-            const current = plan?.id === p.id;
+            const onTrial = data.trial?.plan.id === p.id;
+            const current = !data.trial && plan?.id === p.id;
             const paid = p.priceCents > 0;
             return (
               <div key={p.id} className={cx('flex flex-col gap-3 rounded-xl border bg-card p-5 shadow-xs', current ? 'border-brand-solid ring-2 ring-[var(--ui-focus)]/30' : 'border-border')}>
                 <div className="flex items-baseline justify-between gap-2">
                   <p className="text-lg font-extrabold">{p.name}</p>
                   {current && <Badge tone="brand">Atual</Badge>}
+                  {onTrial && (
+                    <Badge tone="spark">
+                      <Gift className="h-3 w-3" aria-hidden /> Em teste
+                    </Badge>
+                  )}
                 </div>
                 <p className="text-2xl font-extrabold tabular-nums">{planPriceLabel(p.priceCents, p.intervalMonths, formatCents)}</p>
                 {p.description && <p className="text-sm text-muted-foreground">{p.description}</p>}
@@ -166,16 +179,85 @@ function Subscription() {
       <ChoosePlan
         plan={choosing}
         profile={data.profile}
+        trialUntil={data.trial?.until ?? null}
         email={user.email}
         name={user.name}
         onClose={() => setChoosing(null)}
         onDone={(v) => {
           setData(v);
           setChoosing(null);
-          toast(v.plan?.priceCents ? 'Assinatura criada! Pague a primeira mensalidade para começar.' : 'Plano alterado');
+          toast(v.trial && v.subscription ? `Assinatura criada! A primeira mensalidade vence em ${fmtDay(addDays(v.trial.until, 1))}.` : v.plan?.priceCents ? 'Assinatura criada! Pague a primeira mensalidade para começar.' : 'Plano alterado');
         }}
       />
     </div>
+  );
+}
+
+/** The plan does not cover every group the person owns: they pick which stay active. */
+function ActiveGroups({ data, onDone }: { data: BillingView; onDone: (v: BillingView) => void }) {
+  const toast = useToast();
+  const eligible = data.ownedGroups.filter((g) => g.fits);
+  const slots = data.plan?.maxGroups == null ? eligible.length : Math.min(data.plan.maxGroups, eligible.length);
+  const [picked, setPicked] = useState<string[]>(() => data.ownedGroups.filter((g) => !g.planPaused).map((g) => g.id));
+  const [saving, setSaving] = useState(false);
+  const toggle = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : slots === 1 ? [id] : p.length < slots ? [...p, id] : p));
+  const changed = picked.length !== data.ownedGroups.filter((g) => !g.planPaused).length || picked.some((id) => data.ownedGroups.find((g) => g.id === id)?.planPaused);
+  async function save() {
+    setSaving(true);
+    try {
+      onDone(await api<BillingView>('/me/billing/active-groups', { method: 'POST', body: { groupIds: picked } }));
+      toast('Grupos ativos atualizados');
+    } catch (e) {
+      toast(errorMessage(e), 'danger');
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <Card
+      title="Escolha os grupos ativos"
+      description={`Seu plano ${data.plan?.name ?? ''} cobre ${slots} ${slots === 1 ? 'grupo' : 'grupos'}${data.plan?.maxMembersPerGroup != null ? ` de até ${data.plan.maxMembersPerGroup} pessoas` : ''}. Os outros ficam pausados: as semanas param e ninguém é cobrado. Um grupo reativado volta a contar na segunda-feira.`}
+      footer={
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-sm text-muted-foreground">
+            {picked.length} de {slots} {slots === 1 ? 'escolhido' : 'escolhidos'}
+          </span>
+          <Button onClick={save} loading={saving} disabled={!changed || picked.length !== slots}>
+            Salvar escolha
+          </Button>
+        </div>
+      }
+    >
+      <ul className="flex flex-col gap-2">
+        {data.ownedGroups.map((g) => {
+          const on = picked.includes(g.id);
+          return (
+            <li key={g.id}>
+              <label className={cx('flex items-center gap-3 rounded-lg border p-3', on ? 'border-brand-solid bg-brand-soft/40' : 'border-border', g.fits ? 'cursor-pointer' : 'opacity-60')}>
+                <input type="checkbox" className="h-4 w-4 accent-[var(--brand-solid)]" checked={on} disabled={!g.fits} onChange={() => toggle(g.id)} />
+                <span className="text-xl" aria-hidden>
+                  {g.emoji}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-semibold">{g.name}</span>
+                  <span className="block text-xs text-muted-foreground">
+                    {g.members} {g.members === 1 ? 'pessoa' : 'pessoas'}
+                    {!g.fits && ' · passa do limite de pessoas do plano: remova pessoas ou mude de plano'}
+                  </span>
+                </span>
+                {g.planPaused ? (
+                  <Badge tone="warning">
+                    <PauseCircle className="h-3 w-3" aria-hidden /> Pausado
+                  </Badge>
+                ) : (
+                  <Badge tone="success">Ativo</Badge>
+                )}
+              </label>
+            </li>
+          );
+        })}
+      </ul>
+    </Card>
   );
 }
 
@@ -201,7 +283,7 @@ function Usage({ label, used, max }: { label: string; used: number; max: number 
 
 const emptyProfile = (name: string, email: string): BillingProfile => ({ name, document: '', email, phone: '', address: { zipCode: '', street: '', number: '', complement: '', district: '', city: '', state: '' } });
 
-function ChoosePlan({ plan, profile, email, name, onClose, onDone }: { plan: PlanView | null; profile: BillingProfile | null; email: string; name: string; onClose: () => void; onDone: (v: BillingView) => void }) {
+function ChoosePlan({ plan, profile, trialUntil, email, name, onClose, onDone }: { plan: PlanView | null; profile: BillingProfile | null; trialUntil: string | null; email: string; name: string; onClose: () => void; onDone: (v: BillingView) => void }) {
   const [method, setMethod] = useState<BillingMethod>('pix');
   const [form, setForm] = useState<BillingProfile>(profile ?? emptyProfile(name, email));
   const [err, setErr] = useState('');
@@ -235,7 +317,7 @@ function ChoosePlan({ plan, profile, email, name, onClose, onDone }: { plan: Pla
       onClose={onClose}
       wide={paid}
       title={paid ? `Assinar o plano ${plan.name}` : `Mudar para o plano ${plan.name}`}
-      description={paid ? `${planPriceLabel(plan.priceCents, plan.intervalMonths, formatCents)} · a primeira mensalidade vence hoje.` : 'A assinatura paga atual é cancelada; você continua com os grupos que cabem no plano.'}
+      description={paid ? `${planPriceLabel(plan.priceCents, plan.intervalMonths, formatCents)} · a primeira mensalidade vence ${trialUntil ? `em ${fmtDay(addDays(trialUntil, 1))}, quando o teste acaba` : 'hoje'}.` : 'A assinatura paga atual é cancelada; você continua com os grupos que cabem no plano.'}
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>

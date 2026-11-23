@@ -76,7 +76,7 @@ export class WeeksService implements OnModuleInit, OnModuleDestroy {
     const existing = await this.prisma.week.findUnique({ where: { groupId_weekStart: { groupId: group.id, weekStart: toDbDate(ws) } }, select: { id: true } });
     if (existing) return existing.id;
     // Billing pause: no week opens while the owner is blocked, and it resumes on a Monday.
-    if (group.billingPausedAt) return null;
+    if (group.billingPausedAt || group.planPausedAt) return null;
     if (group.resumesOnWeek && fromDbDate(group.resumesOnWeek) > ws) return null;
     return this.openWeek(group.id, ws, now);
   }
@@ -223,12 +223,13 @@ export class WeeksService implements OnModuleInit, OnModuleDestroy {
       const week = await tx.week.findUniqueOrThrow({ where: { id: weekId }, include: { group: true, memberWeeks: { include: { member: { include: { user: true } } } } } });
       if (week.status === 'closed') return null;
       const ws = fromDbDate(week.weekStart);
-      if (week.group.billingPausedAt) {
-        // Paused group (owner blocked): the week is voided — compensating entries, no penalty, streaks untouched.
+      if (week.group.billingPausedAt || week.group.planPausedAt) {
+        // Paused group (owner blocked, or over the owner's plan): the week is voided — compensating entries, no penalty, streaks untouched.
+        const why = week.group.billingPausedAt ? 'assinatura do dono em atraso' : 'o plano do dono não cobre o grupo';
         for (const mw of week.memberWeeks) {
           const owed = mw.commitmentCents - mw.creditedCents;
           if (owed > 0) {
-            await tx.ledgerEntry.create({ data: { groupId: week.groupId, memberId: mw.memberId, type: 'ADJUSTMENT', amountCents: owed, weekId, description: `Semana ${shortDate(ws)} anulada: grupo pausado (assinatura do dono em atraso)` } });
+            await tx.ledgerEntry.create({ data: { groupId: week.groupId, memberId: mw.memberId, type: 'ADJUSTMENT', amountCents: owed, weekId, description: `Semana ${shortDate(ws)} anulada: grupo pausado (${why})` } });
           }
           await tx.memberWeek.update({ where: { id: mw.id }, data: { penaltyCents: 0, allMet: null } });
         }
