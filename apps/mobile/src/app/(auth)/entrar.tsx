@@ -1,6 +1,7 @@
 import { errorMessage } from '@tenace/api-client';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useRef, useState } from 'react';
+import { QrCode } from 'lucide-react-native';
+import { useEffect, useRef, useState } from 'react';
 import type { TextInput } from 'react-native';
 type InputRef = React.ComponentRef<typeof TextInput>;
 import { useMutation } from '@/data/use-api';
@@ -12,7 +13,11 @@ import { Button, Field, Input, LinkText, Notice, T } from '@/ui/kit';
 export default function LoginScreen() {
   const session = useSession();
   const state = useSessionState();
-  const { next } = useLocalSearchParams<{ next?: string }>();
+  const { next, c, a } = useLocalSearchParams<{ next?: string; c?: string; a?: string }>();
+  // Deep link tenace://entrar?c=…&a=… (QR read by the phone's own camera) → QR login.
+  useEffect(() => {
+    if (c) router.replace({ pathname: '/qr', params: { c, ...(a ? { a } : {}) } });
+  }, [c, a]);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -53,6 +58,7 @@ export default function LoginScreen() {
       </Field>
       <LinkText onPress={() => router.push('/esqueci-senha')}>Esqueci minha senha</LinkText>
       <Button label="Entrar" size="lg" loading={busy} disabled={!email.includes('@') || !password} onPress={submit} full />
+      <Button label="Entrar com QR Code do portal" variant="outline" icon={QrCode} onPress={() => router.push('/qr')} full />
     </AuthFrame>
   );
 }

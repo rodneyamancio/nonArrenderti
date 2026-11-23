@@ -108,6 +108,7 @@ model User {
   members        Member[]
   notifications  Notification[]
   subscription   Subscription?
+  appLogins      AppLoginRequest[]
 
   @@map("users")
 }
@@ -606,4 +607,33 @@ model Invoice {
   @@unique([providerSubscriptionId, dueDate])
   @@index([userId, status])
   @@map("invoices")
+}
+
+/// App login by QR from a signed-in portal session, confirmed by a 2-digit number (vg-auth).
+/// Secret, short code and verifier exist only as SHA-256 hashes.
+model AppLoginRequest {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Portal session that asked; if it ends before the claim, nothing is issued.
+  originSessionId String
+  secretHash      String    @unique
+  shortCodeHash   String    @unique
+  verifierHash    String?
+  /// pending | scanned | approved | denied | completed | expired | cancelled
+  status          String    @default("pending")
+  matchCode       Int?
+  choices         Int[]     @default([])
+  deviceName      String?
+  devicePlatform  String?
+  createdAt       DateTime  @default(now())
+  expiresAt       DateTime
+  scannedAt       DateTime?
+  decidedAt       DateTime?
+  completedAt     DateTime?
+  sessionId       String?
+
+  @@index([userId, createdAt])
+  @@index([expiresAt])
+  @@map("app_login_requests")
 }

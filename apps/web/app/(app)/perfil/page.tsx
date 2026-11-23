@@ -1,10 +1,11 @@
 'use client';
 import { BRAND_COLORS, type SessionUser } from '@tenace/types';
-import { CreditCard, LogOut, Monitor, Moon, Shield, Sun } from 'lucide-react';
+import { CreditCard, LogOut, Monitor, Moon, QrCode, Shield, Sun } from 'lucide-react';
 import Link from 'next/link';
 import { useTheme } from 'next-themes';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { AppLoginQr } from '@/components/app/app-login-qr';
 import { useApp } from '@/components/app/session';
 import { Avatar, Button, Card, Field, Input, Notice, PageHeader, Segmented, toneClass, useToast } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
@@ -19,6 +20,7 @@ export default function ProfilePage() {
   const [name, setName] = useState(user.name);
   const [pw, setPw] = useState({ current: '', next: '' });
   const [pwErr, setPwErr] = useState('');
+  const [qrOpen, setQrOpen] = useState(false);
   useEffect(() => setMounted(true), []);
 
   async function saveProfile(patch: Partial<Pick<SessionUser, 'name' | 'avatarColor'>>) {
@@ -118,6 +120,15 @@ export default function ProfilePage() {
           </Button>
         </form>
       </Card>
+
+      <button type="button" onClick={() => setQrOpen(true)} className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 text-left font-semibold shadow-xs hover:bg-accent">
+        <QrCode className="h-5 w-5 text-brand" aria-hidden />
+        <span className="flex-1">
+          Entrar no app com QR Code
+          <span className="block text-sm font-normal text-muted-foreground">Leia com o celular e pronto, sem digitar senha.</span>
+        </span>
+      </button>
+      <AppLoginQr open={qrOpen} onClose={() => setQrOpen(false)} />
 
       <Link href="/assinatura" className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 font-semibold shadow-xs hover:bg-accent">
         <CreditCard className="h-5 w-5 text-brand" aria-hidden /> Assinatura e plano

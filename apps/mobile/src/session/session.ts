@@ -38,6 +38,8 @@ export interface Session {
   restore(): Promise<void>;
   login(email: string, password: string): Promise<SessionUser>;
   signup(name: string, email: string, password: string): Promise<SessionUser>;
+  /** QR login: the claim already returned a mobile session (user + token). */
+  adoptToken(result: { user: SessionUser; token: string }): Promise<SessionUser>;
   logout(notice?: string): Promise<void>;
   /** After a password change the API already revoked every session: just forget it locally. */
   forget(notice: string): Promise<void>;
@@ -158,6 +160,10 @@ export function createSession(deps: SessionDeps): Session {
     async signup(name, email, password) {
       const r = await plain<{ user: SessionUser; token?: string }>('/auth/signup', { body: { name, email, password, client: 'mobile' } });
       return adopt(r);
+    },
+
+    adoptToken(result) {
+      return adopt(result);
     },
 
     async logout(notice) {

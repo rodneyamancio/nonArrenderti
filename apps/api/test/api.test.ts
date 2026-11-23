@@ -87,6 +87,58 @@ describe('auth', () => {
   });
 });
 
+describe('app login by QR (portal approves with the number)', () => {
+  const { createHash, randomBytes } = require('node:crypto') as typeof import('node:crypto');
+  const portal = new Client();
+  const verifier = randomBytes(32).toString('hex');
+  const verifierHash = createHash('sha256').update(verifier).digest('hex');
+  const secretOf = (qr: string) => new URL(qr.replace('tenace://', 'https://x/')).searchParams.get('c')!;
+
+  it('scan → right number → claim gives a working mobile session; replays fail', async () => {
+    await portal.post('/auth/signup', { name: 'Quim', email: 'quim@test.dev', password: 'senha1234' });
+    const created = await portal.post('/auth/app-login');
+    expect(created.status).toBe(201);
+    expect(created.data.qr).toMatch(/^tenace:\/\/entrar\?c=.+&a=http/);
+    expect(created.data.shortCode).toMatch(/^[0-9A-Z]{4}-[0-9A-Z]{4}$/);
+    const phone = new Client();
+    const scan = await phone.post('/auth/app-login/scan', { secret: secretOf(created.data.qr), verifierHash, deviceName: 'iPhone de teste', platform: 'ios' });
+    expect(scan.status).toBe(200);
+    expect(scan.data.matchCode).toBeGreaterThanOrEqual(10);
+    // A second phone cannot use the same QR.
+    expect((await new Client().post('/auth/app-login/scan', { secret: secretOf(created.data.qr), verifierHash })).status).toBe(400);
+    const status = await portal.get(`/auth/app-login/${created.data.id}`);
+    expect(status.data).toMatchObject({ status: 'scanned', deviceName: 'iPhone de teste' });
+    expect(status.data.choices).toHaveLength(3);
+    expect(status.data.choices).toContain(scan.data.matchCode);
+    expect((await phone.post('/auth/app-login/claim', { id: scan.data.id, verifier })).data).toEqual({ status: 'waiting' });
+    expect((await portal.post(`/auth/app-login/${created.data.id}/decide`, { approve: true, code: scan.data.matchCode })).data.status).toBe('approved');
+    // Without the verifier, nothing.
+    expect((await phone.post('/auth/app-login/claim', { id: scan.data.id, verifier: 'f'.repeat(64) })).status).toBe(404);
+    const claim = await phone.post('/auth/app-login/claim', { id: scan.data.id, verifier });
+    expect(claim.data.status).toBe('ok');
+    const me = await fetch(`${url}/auth/me`, { headers: { authorization: `Bearer ${claim.data.token}` } });
+    expect((await me.json()).user.email).toBe('quim@test.dev');
+    expect((await phone.post('/auth/app-login/claim', { id: scan.data.id, verifier })).status).toBe(400);
+  });
+
+  it('a wrong number denies for good; a typed short code works; logout of the portal cancels', async () => {
+    const a = await portal.post('/auth/app-login');
+    const s1 = await new Client().post('/auth/app-login/scan', { code: a.data.shortCode.toLowerCase().replace('-', ' '), verifierHash });
+    expect(s1.status).toBe(200);
+    const wrong = [10, 11, 12, 13].find((n) => n !== s1.data.matchCode)!;
+    expect((await portal.post(`/auth/app-login/${a.data.id}/decide`, { approve: true, code: wrong })).data.status).toBe('denied');
+    expect((await new Client().post('/auth/app-login/claim', { id: s1.data.id, verifier })).status).toBe(403);
+
+    const b = await portal.post('/auth/app-login');
+    const s2 = await new Client().post('/auth/app-login/scan', { secret: secretOf(b.data.qr), verifierHash });
+    await portal.post(`/auth/app-login/${b.data.id}/decide`, { approve: true, code: s2.data.matchCode });
+    await portal.post('/auth/logout');
+    const late = await new Client().post('/auth/app-login/claim', { id: s2.data.id, verifier });
+    expect(late.status).toBe(400);
+    expect(late.data.message).toMatch(/sessão do portal/);
+  });
+});
+
 describe('groups and isolation', () => {
   it('creates a group that starts now with two goals', async () => {
     const r = await ana.post('/groups', {

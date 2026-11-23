@@ -56,7 +56,7 @@ export class AuthService {
     return this.createSession(user, ip, userAgent, client);
   }
 
-  private async createSession(user: User, ip: string, userAgent: string | undefined, client: string): Promise<LoginResult> {
+  async createSession(user: User, ip: string, userAgent: string | undefined, client: string): Promise<LoginResult> {
     const token = randomToken(32);
     const now = Date.now();
     const maxAgeMs = this.envs.env.SESSION_TTL_HOURS * 3600_000;

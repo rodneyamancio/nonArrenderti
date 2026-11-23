@@ -50,3 +50,17 @@ test('after login only app-relative destinations are followed', () => {
   assert.equal(safeNext('https://evil.com'), '/inicio');
   assert.equal(safeNext(undefined), '/inicio');
 });
+
+test('QR login: only Tenace QRs from the same server are accepted', async () => {
+  const { parseLoginQr, normalizeShortCode, toHex } = await import('@/features/auth/qr');
+  const secret = 'a'.repeat(43);
+  assert.deepEqual(parseLoginQr(`tenace://entrar?c=${secret}&a=https%3A%2F%2Ftenace.amancio.family`, 'https://tenace.amancio.family'), { ok: true, secret });
+  assert.equal(parseLoginQr(`tenace://entrar?c=${secret}&a=http%3A%2F%2Flocalhost%3A3310`, 'https://tenace.amancio.family').ok, false);
+  assert.match(parseLoginQr(`tenace://entrar?c=${secret}&a=http%3A%2F%2Flocalhost%3A3310`, 'https://tenace.amancio.family').error, /outro servidor/);
+  assert.equal(parseLoginQr('https://example.com', 'https://tenace.amancio.family').ok, false);
+  assert.equal(parseLoginQr('tenace://entrar?c=curto', 'https://tenace.amancio.family').ok, false);
+  assert.equal(normalizeShortCode('abcd efgh'), 'ABCD-EFGH');
+  assert.equal(normalizeShortCode('o1l2-iabc'), '0112-1ABC');
+  assert.equal(normalizeShortCode('abc'), null);
+  assert.equal(toHex(new Uint8Array([0, 15, 255])), '000fff');
+});

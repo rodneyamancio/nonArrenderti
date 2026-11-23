@@ -123,6 +123,19 @@ same origin as the portal (`https://tenace.amancio.family/api`): the web proxy f
 (no network keeps the session); a password change ends the session there too. MFA and
 e-mail verification: out of v1. Google login: open question (§17).
 
+**App login by the portal's QR** (`vg-auth`, number-match pattern): Perfil › "Entrar no
+app com QR Code" creates an `app_login_requests` row (3 min TTL; only hashes stored) and
+shows a QR `tenace://entrar?c=<secret>&a=<portal>` plus an 8-char short code (Crockford,
+`XXXX-XXXX`) for phones without a camera. The app scans (or types the code) sending the
+SHA-256 of a random verifier that never leaves the phone; the first scan spends the QR
+and returns a 2-digit number. The portal asks "which number is on the phone?" with 3
+choices: right → approved; wrong number or "Não fui eu" → denied for good. The app polls
+`POST /auth/app-login/claim` with the verifier and, once approved, gets a normal mobile
+session. Nothing is issued if the portal session that asked ended meanwhile (logout,
+password change, block). Scan/claim are public and rate-limited per IP; approve/deny
+and the resulting login are audited (`auth.app_login.*`, `auth.login` with `via: app_qr`).
+Opening a new QR cancels the previous open ones of that portal session.
+
 **System roles:** `user` (everyone), `platform_admin` (support staff).
 
 **Group roles and permissions** (resolved per group):

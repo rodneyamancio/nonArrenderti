@@ -3,7 +3,7 @@
     "name": "Tenace",
     "slug": "tenace",
     "owner": "valiant-group-do-brasil",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "tenace",
@@ -20,7 +20,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "family.amancio.tenace",
       "infoPlist": {
-        "NSCameraUsageDescription": "O Tenace usa a câmera só para tirar a foto do registro ou do comprovante que você escolher enviar.",
+        "NSCameraUsageDescription": "O Tenace usa a câmera para ler o QR Code de login do portal e para a foto do registro ou do comprovante que você escolher enviar.",
         "NSPhotoLibraryUsageDescription": "O Tenace abre suas fotos só para você escolher a imagem do registro ou do comprovante.",
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -63,6 +63,15 @@
           "photosPermission": "O Tenace abre suas fotos só para você escolher a imagem do registro ou do comprovante.",
           "cameraPermission": "O Tenace usa a câmera só para tirar a foto do registro ou do comprovante que você escolher enviar.",
           "microphonePermission": false
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "O Tenace usa a câmera para ler o QR Code de login do portal e para a foto do registro ou do comprovante que você escolher enviar.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false,
+          "barcodeScannerEnabled": true
         }
       ]
     ],
